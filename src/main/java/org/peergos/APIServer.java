@@ -49,6 +49,7 @@ public class APIServer {
 
         //.ipfsを取得する．
         Path ipfsPath = getIPFSPath(args);
+        Kad.getIns().initialize("kadrtt.properties");
         Logging.init(ipfsPath, args.getBoolean("logToConsole", false));
         //configを取得する．
         Config config = readConfig(ipfsPath);
@@ -56,7 +57,7 @@ public class APIServer {
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION);
         BlockRequestAuthoriser authoriser = (c, b, p, a) -> CompletableFuture.completedFuture(true);
 
-        Kad.getIns().initialize("kadrtt.properties");
+
         //ipfsを生成
         //ここでHTTPサーバプロセスを立ち上げる？
         EmbeddedIpfs ipfs = EmbeddedIpfs.build(ipfsPath,
