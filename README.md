@@ -17,4 +17,16 @@
 ~~~
 curl -X POST "http://127.0.0.1:5001/api/v0/id"
 ~~~
-- 
+### コンテンツをputする．
+- PUT対象のデータのCIDを取得し，あとはKademliaに従ってPUT先を決めて保存させる．
+~~~
+//文字列をPUTする場合
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?value=文字列"
+//ファイルをPUTする場合
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=ファイルパス"
+~~~
+### コンテンツをgetする．
+- GET対象
+~~~
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/getvalue?cid=対象コンテンツのCID"
+~~~
