@@ -2,8 +2,8 @@
 ## インストール
 - 一式をコピーする．
 - .ipfs/configがあればconfigを削除してください．初回起動時に自動生成して，かつピアIDも自動生成してconfigに書き込まれます．
-- Merkle DAG関連のデータはpropertiesファイルにあるipfs.providerpath, コンテンツ生データはipfs.datapathで指定したディレクトリに保存されます．このディレクトリ名は，kadrtt.propertiesで指定してください．
-- JDKがインストール済みである必要があります．
+- Merkle DAG関連のデータはpropertiesファイルにあるipfs.providerspath, コンテンツ生データはipfs.datapathで指定したディレクトリに保存されます．このディレクトリ名は，kadrtt.propertiesで指定してください．
+- Javaがインストール済みである必要があります．実行するためには，できればJava Runtime17以上が望ましいです．開発するには，JDK17以上が望ましいです
 - 以下のコマンドでは，一斉に実行に必要なファイル群をそれらにアップロードします．その際，peerlistファイルで，ノードのIP，sshログインユーザ名，パスワードを指定する必要があります．
 ~~~
 ./upload.sh
