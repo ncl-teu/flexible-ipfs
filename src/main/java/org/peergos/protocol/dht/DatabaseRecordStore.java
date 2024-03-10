@@ -28,6 +28,8 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
 
     private final String ATTRLINK_TABLE = "attrlink";
 
+    private final String CONTENT_POPULARITY = "contentpopularity";
+
     private final String ATTR_TABLE = "attrs";
     private final int SIZE_OF_VAL = 10 * 1024; // 10KiB
     private final int SIZE_OF_PEERID = 100;
@@ -38,7 +40,10 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
      */
     public DatabaseRecordStore(String location) {
         try {
-            this.connection = getConnection(connectionStringPrefix + location);
+            this.connection = getConnection(connectionStringPrefix + location + ";DB_CLOSE_ON_EXIT=TRUE");
+            //+ ";DB_CLOSE_ON_EXIT=TRUE"
+            //this.connection = DriverManager.getConnection(connectionStringPrefix + "tcp://localhost/" + location);
+
             this.connection.setAutoCommit(true);
             createTable();
             createPredSucTable();
@@ -52,6 +57,7 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
     }
 
     private Connection getConnection(String connectionString) throws SQLException {
+
         return DriverManager.getConnection(connectionString);
     }
 
@@ -91,6 +97,26 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
         } catch (SQLException ex) {
             throw new IllegalStateException(ex);
         }
+    }
+
+
+    /**
+     *
+     */
+    public void dropTables() {
+       String dropPredSuc = "delete from " + PREDSUC_TABLE;
+        try (PreparedStatement select = connection.prepareStatement(dropPredSuc)) {
+            select.executeUpdate();
+
+            //同様に，attrlinkも削除する．
+            String attrLink = "delete from " + ATTRLINK_TABLE;
+            PreparedStatement select2 = connection.prepareStatement(attrLink);
+            select2.executeUpdate();
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }
+
     }
 
 

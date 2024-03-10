@@ -136,6 +136,7 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
             this.key = key;
             this.addresses = addresses;
         }
+
     }
 
     private int compareKeys(RoutingEntry a, RoutingEntry b, Id keyId) {
@@ -278,6 +279,32 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
     public CompletableFuture<? extends KademliaController> dialPeer(PeerAddresses target, Host us) {
         Multiaddr[] multiaddrs = getPublic(target);
 
+        MultiAddress addr = target.addresses.get(0);
+        //なぜか，4001宛にしか接続が受け入れられないので，targetのportが4001以外の場合は，強制的に4001にする．
+        if(addr.getPort() != 4001){
+            String[] parts = addr.toString().substring(1).split("/");
+            parts[3] = "4001";
+            StringBuffer buf = new StringBuffer("/");
+            for(int i=0;i<parts.length;i++){
+                buf.append(parts[i]);
+                buf.append("/");
+
+            }
+            //MultiAddress newAddr = new MultiAddress(buf.toString());
+            Multiaddr newAddr = new Multiaddr(buf.toString());
+            multiaddrs[0] = newAddr;
+        }
+
+
+
+
+/*
+        this.engine.addOutgoingConnection(pid, multiaddrs[0]);
+        this.engine.addIncomingConnection(pid, multiaddrs[0]);
+*/
+
+
+
         return dial(us, PeerId.fromBase58(target.peerId.toBase58()), multiaddrs).getController();
 
     }
@@ -344,16 +371,22 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
         String pathToPublish = "/ipfs/" + cid;
 
         Iterator<PeerAddresses> pIte = closestPeers.iterator();
+        boolean isWritten = false;
         while(pIte.hasNext()){
             PeerAddresses addr = pIte.next();
             if(addr.peerId.toString().equals(node1Id.toString())){
+                if(isWritten){
+                    continue;
+                }
                 byte[] cborEntryData = IPNS.createCborDataForIpnsEntry(data, pathToPublish, expiry,
                         Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttl);
                 CborObject cbor = CborObject.fromByteArray(cborEntryData);
                 CborObject.CborMap map = (CborObject.CborMap) cbor;
                 String str_cid = cid.toString();
+                System.out.println("cid:"+str_cid);
                 //ファイル書き込み
                 Kad.writeMerkleDAG(str_cid, map);
+                isWritten = true;
             }else{
                 boolean success = dialPeer(addr, us).orTimeout(5, TimeUnit.SECONDS).join().putValue(data,"/ipfs/" + cid, expiry, sequence,
                         ttl, cid, us.getPrivKey()).join();

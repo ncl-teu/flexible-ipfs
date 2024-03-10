@@ -42,18 +42,27 @@ public class KademliaEngine {
     }
 
     public void addOutgoingConnection(PeerId peer, Multiaddr addr) {
-        if (Kad.getIns().isPeerExist(addr)) {
+
+        if (Kad.getIns().isPeerExist(peer, addr)) {
             router.touch(Instant.now(), new Node(Id.create(Hash.sha256(peer.getBytes()), 256), peer.toString()));
             addressBook.addAddrs(peer, 0, addr);
         }
+     /*   boolean ret = Kad.getIns().checkPeer(peer, addr);
+        if(ret){
 
+        }else{
+            RamAddressBook ram = (RamAddressBook) addressBook;
+            ram.removePeer(peer);
+        }
+*/
 
     }
 
     public void addIncomingConnection(PeerId peer, Multiaddr addr) {
-        if (Kad.getIns().isPeerExist(addr)) {
+        if (Kad.getIns().isPeerExist(peer, addr)) {
             router.touch(Instant.now(), new Node(Id.create(Hash.sha256(peer.getBytes()), 256), peer.toString()));
             addressBook.addAddrs(peer, 0, addr);
+
         }
 
     }
@@ -276,8 +285,13 @@ public class KademliaEngine {
                         if(map.containsKey("isattrput")){
                             //ファイルとして属性を保存する．
                             Kad.writeMerkleDAG(cid, map);
-                            CborObject.CborByteArray valarray = (CborObject.CborByteArray)map.get("RawData");
-                            String val = new String(valarray.value);
+                            String val = null;
+
+                                CborObject.CborByteArray valarray = (CborObject.CborByteArray)map.get("RawData");
+                                if(valarray != null)
+                                 val = new String(valarray.value);
+
+
                             String predBytes = null;
                             String sucBytes = null;
                             if(map.containsKey("pred")){
@@ -396,8 +410,26 @@ public class KademliaEngine {
                 }
                 break;
             }
+            //swarm keyの要求
+            case QUERY_SWAM_KEY:{
+                //swarmkeyを取得
+               /*a String str_swarm = Kad.getIns().getSwarmKey();
+
+                Dht.Message.Builder builder = msg.toBuilder();
+
+                builder = builder.setRecord(Dht.Record.newBuilder()
+                        .setKey(msg.getKey())
+                        //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                        .setValue(ByteString.copyFrom(str_swarm.getBytes())));
+                stream.writeAndFlush(builder.build());
+
+                */
+                break;
+            }
+
             //担当ノードに対して指定の属性情報で問い合わせが来たとき
                 //<CID, Cborble/CborMap>を返す．
+
             case GET_VALUE_WITH_ATTRS: {
                 Optional<IpnsMapping> mapping = IPNS.validateIpnsEntry(msg);
 

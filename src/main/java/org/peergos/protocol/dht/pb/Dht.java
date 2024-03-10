@@ -1116,7 +1116,9 @@ public final class Dht {
       //Added by Kanemitsu
       GET_VALUE_WITH_ATTRS(7),
 
-      GET_VALUE_AT_LEAF(8)
+      GET_VALUE_AT_LEAF(8),
+
+      QUERY_SWAM_KEY(9)
       ;
 
       /**
@@ -1172,6 +1174,7 @@ public final class Dht {
           case 6: return RESPONSE;
           case 7: return GET_VALUE_WITH_ATTRS;
           case 8: return GET_VALUE_AT_LEAF;
+          case 9: return QUERY_SWAM_KEY;
           default: return null;
         }
       }

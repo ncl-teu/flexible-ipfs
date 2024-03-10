@@ -421,4 +421,15 @@ public interface KademliaController {
     }
 
 
+    default CompletableFuture<Dht.Record> checkPrivate(){
+
+        Dht.Message outgoing = Dht.Message.newBuilder()
+                .setType(Dht.Message.MessageType.QUERY_SWAM_KEY)
+                //.setKey(ByteString.copyFrom(cid.getBytes()))
+                .build();
+        return rpc(outgoing).thenApply(GetResult::getRecord);
+    }
+
+
+
 }

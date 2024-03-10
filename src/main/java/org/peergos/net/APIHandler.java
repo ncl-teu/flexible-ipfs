@@ -1,6 +1,5 @@
 package org.peergos.net;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import io.ipfs.cid.Cid;
 import io.ipfs.multibase.binary.Base32;
@@ -11,6 +10,7 @@ import org.peergos.*;
 import org.peergos.blockstore.RamBlockstore;
 import org.peergos.cbor.CborObject;
 import org.peergos.cbor.Cborable;
+import org.peergos.protocol.dht.DatabaseRecordStore;
 import org.peergos.protocol.dht.RamProviderStore;
 import org.peergos.protocol.dht.RamRecordStore;
 import org.peergos.protocol.ipns.IPNS;
@@ -61,6 +61,14 @@ public class APIHandler extends Handler {
     public static final String FIND_ATTRS = "dht/getbyattrs";
 
     public static final String DROP_ATTR = "dht/dropattr";
+
+    public static final String INIT_TABLE = "dht/inittable";
+
+    public static final String PEERID = "dht/getpeerid";
+
+    public static final String EXIT = "exit";
+
+
 
     private final EmbeddedIpfs ipfs;
 
@@ -238,9 +246,9 @@ public class APIHandler extends Handler {
                 //その後，指定の属性情報の担当ノードを見つけて(findNode)，それに対してDB登録リクエストを行う
                 case PUT_VALUE_ATTR:
                     //attr=属性名1:値1^属性名2:値2^....
-                    //curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?value=xxxx&attr=time_0834-location_doka"
+                    //cmdccation_doka"
 
-
+                    //curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?value=MMHello&attrname=time&attrvalue=0825"
                     ///dht/putvaluewithattr?file=xxxx&attrname=time&attrvalue=0825
                     //ファイルをputする．
                     //また，属性値も付与する．
@@ -359,6 +367,11 @@ public class APIHandler extends Handler {
                         Iterator<CborObject.CborMap> mIte = mapList.iterator();
                         while (mIte.hasNext()) {
                             CborObject.CborMap m = mIte.next();
+                            //CborMapのRawDataを取り出して，dataフォルダへバイナリを書き出す．
+                            CborObject.CborString ccid = (CborObject.CborString)m.get("cid");
+                            String str_cid = ccid.value;
+                            //Kad.writeData(str_cid, m, "");
+                            Kad.writeMerkleDAG(str_cid, m);
                             buf.append("[value:");
                             buf.append(new String(Kad.getDataFromMerkleDAG(m)));
                             buf.append("],");
@@ -505,6 +518,11 @@ public class APIHandler extends Handler {
                     replyJson(httpExchange, JSONParser.toString(res));
 
                     break;
+                case PEERID:
+                    PeerId id = Kad.getIns().getNode().getPeerId();
+                    replyJson(httpExchange, id.toString());
+                    break;
+
 
                 //findByAttrRange
                 //属性値の範囲で検索する．
@@ -616,6 +634,23 @@ public class APIHandler extends Handler {
                     //listに対するループ
                     replyJson(httpExchange, JSONParser.toString(resultMap));
 
+
+                    break;
+                    //テーブルの初期化
+                    ///attrlink/predsucの２つのテーブルを初期化する．
+                //curl -X POST "http://127.0.0.1:5001/api/v0/dht/inittable"
+                case INIT_TABLE:
+                    DatabaseRecordStore store = Kad.getIns().getStore();
+                    store.dropTables();
+
+                    break;
+                    //IPFSの停止
+                //curl -X POST "http://127.0.0.1:5001/api/v0/exit"
+                case EXIT:
+                    System.out.println("****Stopping IPFS*****");
+                    ipfs.stop().join();
+                    Kad.getIns().getServer().stop(3);
+                    System.exit(1);
 
                     break;
                 default: {
