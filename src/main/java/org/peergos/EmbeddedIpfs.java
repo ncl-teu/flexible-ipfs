@@ -103,8 +103,9 @@ public class EmbeddedIpfs {
         int connections = dht.bootstrapRoutingTable(node, bootstrap, addr -> !addr.contains("/wss/"));
        // int connections = dht.bootstrapRoutingTable(node, bootstrap, addr -> addr.contains("35.78.143.45"));
         if (connections == 0)
-            throw new IllegalStateException("No connected peers!");
+            //throw new IllegalStateException("No connected peers!");
         dht.bootstrap(node);
+
 
         PeriodicBlockProvider blockProvider = new PeriodicBlockProvider(22 * 3600_000L,
                 () -> blockstore.refs().join().stream(), node, dht, blockstore.toPublish);
@@ -170,6 +171,7 @@ public class EmbeddedIpfs {
 
         Host node = builder.addProtocols(protocols).build();
 
+        //PeerId id = Kad.getIns().getNode().getPeerId();
 
         return new EmbeddedIpfs(node, blockstore, records, dht, bitswap, httpHandler, bootstrap);
     }

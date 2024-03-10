@@ -36,4 +36,8 @@ public class RamAddressBook implements AddressBook {
         addresses.put(peerId, val);
         return CompletableFuture.completedFuture(null);
     }
+
+    public void removePeer(PeerId id){
+        this.addresses.remove(id);
+    }
 }

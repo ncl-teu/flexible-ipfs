@@ -50,6 +50,7 @@ public class APIServer {
         //.ipfsを取得する．
         Path ipfsPath = getIPFSPath(args);
         Kad.getIns().initialize("kadrtt.properties");
+
         Logging.init(ipfsPath, args.getBoolean("logToConsole", false));
         //configを取得する．
         Config config = readConfig(ipfsPath);
@@ -84,8 +85,10 @@ public class APIServer {
             apiServer.createContext(HttpProxyService.API_URL, new HttpProxyHandler(new HttpProxyService(ipfs.node, ipfs.p2pHttp.get(), ipfs.dht)));
         apiServer.setExecutor(Executors.newFixedThreadPool(handlerThreads));
         apiServer.start();
+        Kad.getIns().setServer(apiServer);
 
 
+        //shutdownされたときの処理
         Thread shutdownHook = new Thread(() -> {
             LOG.info("Stopping server...");
             try {
