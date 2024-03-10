@@ -47,6 +47,8 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=ファイ�
 ~~~
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/getvalue?cid=対象コンテンツのCID"
 ~~~
+![d9b672d92aa955025e8e5853d0e5ca63](https://github.com/ncl-teu/flexible-ipfs/assets/4952618/3bcd9b63-8ec9-414a-9f6b-b57bebce2479)
+
 ### 属性情報と各基準値のPUT
 - 例えば，24時間を1時間単位で検索させたい場合は，例えばtimeという属性名で1,2,3,...24という値をputします．各時間の担当ノードが決められて，それらにputされます．
 - 属性検索をする場合は，事前にこの処理が必要となります．
