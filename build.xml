@@ -61,7 +61,7 @@
             <classpath path="${lib}/ipfslib.jar" />
             <classpath path="${lib}/jackson-core-2.15.2.jar" />
             <classpath path="${lib}/jackson-databind-2.15.2" />
-            <!--<classpath path="${lib}/commons-math3-3.2.jar" /> -->
+            <classpath path="${lib}/commons-math-2.0.jar" />
             <!--<exclude name="**/*Test.java" />
             <exclude name="**/Test*.java" />  -->
         </javac>
