@@ -60,3 +60,13 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_09_10&cidon
 //timeが08~10で，かつtemp(温度)が25～35である場合で，cidのみを取得する場合（コンテンツそのものが欲しい場合は，cidonly以降を消す．）
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10-temp_25_35&cidonly=true"
 ~~~
+### ノードが保持するDBのテーブルデータを空にする場合
+- 各ノードは，h2 DBにてメタ情報を管理しています．これらを空にするには以下のコマンドを実行させてください．
+~~~
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/inittable"
+~~~
+### ipfsプロセスを終了する場合
+- Ctrl+Cか，もしくは以下のコマンドでkillできます．
+~~~
+curl -X POST "http://127.0.0.1:5001/api/v0/exit"
+~~~
