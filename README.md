@@ -4,7 +4,19 @@
 - .ipfs/configがあればconfigを削除してください．初回起動時に自動生成して，かつピアIDも自動生成してconfigに書き込まれます．
 - Merkle DAG関連のデータはpropertiesファイルにあるipfs.providerspath, コンテンツ生データはipfs.datapathで指定したディレクトリに保存されます．このディレクトリ名は，kadrtt.propertiesで指定してください．
 - kadrtt.propertiesのipfs.endpoint，つまりbootstrapノード情報を適切なものにしてください．/ip4/IPアドレス/tcp/4001/ipfs/ピアID　という形式です．ピアIDは，後述の方法で取得可能．
+## コンパイル・実行
 - Javaがインストール済みである必要があります．実行するためには，できればJava Runtime17以上が望ましいです．開発するには，JDK17以上が望ましいです
+- antでコンパイルします．antが設定済み（PATH含めて）である必要があります．以下のコマンドでコンパイルしてください．
+~~~
+//ビルドの場合
+ant
+//クリーンする場合
+ant clean
+~~~
+- もしくは，IDEで開発する場合は，以下のものをclasspathに入れてビルドすればコンパイルは通ります．
+  - . (現在のトップディレクトリ)
+  - \classes\production\nabu-master
+  - libディレクトリ内の全てのjarファイル
 - 以下のコマンドでは，一斉に実行に必要なファイル群をそれらにアップロードします．その際，peerlistファイルで，ノードのIP，sshログインユーザ名，パスワードを指定する必要があります．
 ~~~
 ./upload.sh
