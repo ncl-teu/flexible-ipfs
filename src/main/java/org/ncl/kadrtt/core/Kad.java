@@ -1,5 +1,7 @@
 package org.ncl.kadrtt.core;
 
+import com.google.protobuf.ByteString;
+import com.sun.net.httpserver.HttpServer;
 import io.ipfs.cid.Cid;
 import io.ipfs.multiaddr.MultiAddress;
 import io.ipfs.multibase.binary.Base32;
@@ -7,15 +9,18 @@ import io.ipfs.multihash.Multihash;
 import io.libp2p.core.Host;
 import io.libp2p.core.PeerId;
 import io.libp2p.core.multiformats.Multiaddr;
+import org.apache.commons.math.random.RandomDataImpl;
+import org.peergos.APIServer;
 import org.peergos.Hash;
 import org.peergos.PeerAddresses;
 import org.peergos.cbor.CborObject;
-import org.peergos.protocol.dht.DatabaseRecordStore;
-import org.peergos.protocol.dht.Kademlia;
-import org.peergos.protocol.dht.ProviderStore;
-import org.peergos.protocol.dht.RamProviderStore;
+import org.peergos.protocol.dht.*;
+import org.peergos.protocol.dht.pb.Dht;
+import org.peergos.protocol.dnsaddr.DnsAddr;
+
 
 import java.io.*;
+import java.math.BigDecimal;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
@@ -24,8 +29,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Kad {
 
@@ -44,7 +54,7 @@ public class Kad {
 
     public static boolean isPrivate;
 
-    public static String swarmKey;
+    //public static String swarmKey;
 
     public static LinkedList<String> peerList;
 
@@ -70,10 +80,50 @@ public class Kad {
 
     public static String GW_ENDPOINT;
 
+    private HashMap<String, ContentInfo> cMap;
+
+    private HttpServer server;
+
+    private static final String OS_NAME = System.getProperty("os.name").toLowerCase();
+
+    public static String CP;
+
+    public static double lambda;
+
+    public static double lambda_min;
+
+    public static double lambda_max;
+
+    public static RandomDataImpl rDataGen =  new RandomDataImpl();
+
+    public static boolean leave;
+
+    public static boolean replication;
+
+    public static long replication_duration;
+
+    public static double leave_min;
+
+    public static double leave_max;
+
+    public static long putstart_min;
+
+    public static long putstart_max;
+
+    public static long putinterval_min;
+
+    public static long putinterval_max;
+
+    public static long putcontent_min;
+
+    public static long putcontent_max;
+
 
     private Kad(){
 
+
     }
+
 
 
     public void initialize(String fileName){
@@ -86,12 +136,56 @@ public class Kad {
             Kad.alpha = Integer.valueOf(Kad.prop.getProperty("kademlia.alpha"));
             Kad.beta = Integer.valueOf(Kad.prop.getProperty("kademlia.beta"));
             Kad.isPrivate = Boolean.valueOf(Kad.prop.getProperty("ipfs.isprivate"));
-            Kad.swarmKey = String.valueOf(Kad.prop.getProperty("ipfs.swarmkey"));
+            //Kad.swarmKey = String.valueOf(Kad.prop.getProperty("ipfs.swarmkey"));
             Kad.providerPath = String.valueOf(Kad.prop.getProperty("ipfs.providerspath"));
             Kad.putRedundancy = Integer.valueOf(Kad.prop.getProperty("kademlia.putredundancy"));
             Kad.getdataPath = String.valueOf(Kad.prop.getProperty("ipfs.datapath"));
             Kad.GW_ENDPOINT = String.valueOf(Kad.prop.getProperty("ipfs.endpoint"));
+            Kad.CP = String.valueOf(Kad.prop.get("ipfs.cp"));
+            if(Kad.isLinux()){
+                Kad.CP = Kad.CP.replaceAll(";", ":");
+            }
+            if(Kad.isWindows()){
+                Kad.CP = Kad.CP.replaceAll(":", ";");
+            }
 
+            Kad.lambda_min = Double.valueOf(Kad.prop.getProperty("ipfs.lambda.min"));
+            Kad.lambda_max = Double.valueOf(Kad.prop.getProperty("ipfs.lambda.max"));
+
+            int leave_val = Integer.valueOf(Kad.prop.getProperty("ipfs.leave"));
+            if(leave_val == 1){
+                Kad.leave = true;
+            }else{
+                Kad.leave = false;
+            }
+
+            int replication_val = Integer.valueOf(Kad.prop.getProperty("ipfs.replication"));
+            if(replication_val == 1){
+                Kad.replication = true;
+            }else{
+                Kad.replication = false;
+            }
+
+            Kad.replication_duration = Long.valueOf(Kad.prop.getProperty("ipfs.replication.measure.duration"));
+
+            Kad.leave_min = Double.valueOf(Kad.prop.getProperty("ipfs.lambda.leave.min")).doubleValue();
+            Kad.leave_max = Double.valueOf(Kad.prop.getProperty("ipfs.lambda.leave.max")).doubleValue();
+
+            Kad.putstart_min = Long.valueOf(Kad.prop.getProperty("ipfs.put.starttime_min")).longValue();
+            Kad.putstart_max = Long.valueOf(Kad.prop.getProperty("ipfs.put.starttime_max")).longValue();
+
+            Kad.putinterval_min = Long.valueOf(Kad.prop.getProperty("ipfs.put.interval_min")).longValue();
+            Kad.putinterval_max = Long.valueOf(Kad.prop.getProperty("ipfs_put.interval_max")).longValue();
+
+            Kad.putcontent_min = Long.valueOf(Kad.prop.getProperty("ipfs.put.contentnum_min")).longValue();
+            Kad.putcontent_max = Long.valueOf(Kad.prop.getProperty("ipfs.put.contentnum_max")).longValue();
+            
+
+            this.cMap = new HashMap<String, ContentInfo>();
+            this.configContentMap();
+            //Dataフォルダを見て，各要素をcMapへ格納する．
+
+/*
 
             File f = new File("peerlist");
             BufferedReader br = new BufferedReader(new FileReader(f));
@@ -101,11 +195,89 @@ public class Kad {
                 line = br.readLine();
             }
             br.close();
-
+*/
         }catch(Exception e){
             e.printStackTrace();
         }
     }
+
+    public String getEndPointPeerId() {
+
+        int idx = Kad.GW_ENDPOINT.indexOf("ipfs/");
+        String gid = Kad.GW_ENDPOINT.substring(idx + 5);
+        return gid;
+    }
+
+
+    public HttpServer getServer() {
+        return server;
+    }
+
+    public void setServer(HttpServer server) {
+        this.server = server;
+    }
+
+
+
+    private void configContentMap(){
+        File dir = new File(Kad.getdataPath);
+        File[] files = dir.listFiles();
+        int len  = files.length;
+        for(int i=0;i<len;i++){
+            this.registerContentInfo(files[i].getName());
+        }
+    }
+
+
+    public static boolean isLinux(){
+        return OS_NAME.startsWith("linux");
+    }
+
+    public static boolean isWindows(){
+        return OS_NAME.startsWith("windows");
+    }
+
+    public static boolean isMac(){
+        return OS_NAME.startsWith("mac");
+    }
+
+
+    public void isBootStrap(){
+
+
+    }
+
+    public void removeContentInfo(String cid){
+        this.cMap.remove(cid);
+    }
+    /**
+     * 指定CIDのアクセスカウントを上げる．
+     * @param cid
+     */
+    public void addAccessCount(String cid){
+        if(this.cMap.containsKey(cid)){
+            ContentInfo info = this.cMap.get(cid);
+            long currentVal = info.getCount();
+            currentVal++;
+            info.setCount(currentVal);
+        }else{
+            //なければ，新規作成
+            this.registerContentInfo(cid);
+            this.addAccessCount(cid);
+
+        }
+    }
+
+    public void registerContentInfo(String cid){
+        ContentInfo info = new ContentInfo(cid);
+        this.cMap.put(cid, info);
+    }
+
+   /* public String getSwarmKey(){
+        return Kad.swarmKey;
+    }
+
+    */
 
     /**
      * Configをダウンロードします．
@@ -253,6 +425,41 @@ public class Kad {
         return new ObjectInputStream(new ByteArrayInputStream(bytes)).readObject();
     }
 
+
+    public static PeerAddresses genForeignPeerAddresses(String str){
+        LinkedList<MultiAddress> mList = new LinkedList<MultiAddress>();
+        String multihash = null;
+        if(str.indexOf(":") == -1){
+            multihash = str;
+            String mh = str.trim();
+            MultiAddress addr = new MultiAddress(str);
+            mList.add(addr);
+
+        }else{
+            int idx = str.indexOf(":");
+            multihash = str.substring(0, str.indexOf(":"));
+            String addrlist_tmp = str.substring(idx+1);
+            String raw_addrlist = addrlist_tmp.substring(2, addrlist_tmp.length()-1);
+            StringTokenizer token = new StringTokenizer(raw_addrlist, ",");
+            while(token.hasMoreTokens()){
+                String v = token.nextToken();
+                v = v.trim();
+                MultiAddress addr = new MultiAddress(v);
+
+                mList.add(addr);
+
+            }
+        }
+
+
+
+
+
+
+        return new PeerAddresses(Multihash.fromBase58(multihash), mList);
+    }
+
+
     public static PeerAddresses genPeerAddresses(String str){
         LinkedList<MultiAddress> mList = new LinkedList<MultiAddress>();
         String multihash = null;
@@ -286,17 +493,83 @@ public class Kad {
         return new PeerAddresses(Multihash.fromBase58(multihash), mList);
     }
 
-    public static boolean writeMerkleDAG(String cid, CborObject.CborMap map){
+    /**
+     * cidとmapをキーにして，そこから指定の場所にファイルを書き出します．
+     * @param cid
+     * @param map
+     * @param ext
+     * @return
+     */
+    public static void writeData(String cid, CborObject.CborMap map, String ext){
         try{
             Path p1 = Paths.get("");
             Path p2 = p1.toAbsolutePath();
+            //mapからRawDataを取得する．
+            CborObject.CborByteArray dataArray = (CborObject.CborByteArray) map.get("RawData");
+            File dir2 = new File(p2 + "/" + Kad.getdataPath);
+            if(!dir2.exists()){
+                dir2.mkdir();
+            }
+
+            FileOutputStream fos = new FileOutputStream(p2 + "/" + Kad.getdataPath + "/" + cid);
+            BufferedOutputStream bos = new BufferedOutputStream(fos);
+            bos.write(dataArray.toByteArray());
+            bos.close();
+            fos.close();
+
+
+
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+
+    }
+
+    /**
+     * MerkleDAGとコンテンツを保存する処理です．
+     * MerkleDAG: providersフォルダ（コンテンツそのものは保存しない）
+     * コンテンツ: getdataフォルダ
+     * に保存されます．
+     * その後は，cMapに登録します．
+     * @param cid
+     * @param map
+     * @return
+     */
+    public static boolean writeMerkleDAG(String cid, CborObject.CborMap map){
+        try{
+
+            //byte[] data = map.getByteArray("RawData");
+            CborObject.CborByteArray data = (CborObject.CborByteArray) map.get("RawData");
+
+            Path p1 = Paths.get("");
+            Path p2 = p1.toAbsolutePath();
+
+            File dir_data = new File(p2 + "/" + Kad.getdataPath);
+            if(!dir_data.exists()){
+                dir_data.mkdir();
+            }
+
+            ObjectOutputStream oosdata = new ObjectOutputStream(new FileOutputStream(p2 + "/"+Kad.getdataPath + "/"+cid));
+            oosdata.writeObject(data);
+            oosdata.close();
+
+            //書き出しができたら，MerkleDAGからRawDataを削除する．
+            map.put("RawData", null);
+
             File dir = new File(p2 + "/" + Kad.providerPath);
             if(!dir.exists()){
                dir.mkdir();
             }
+
             ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(p2 + "/"+Kad.providerPath + "/"+cid));
             oos.writeObject(map);
             oos.close();
+
+            //cMapへ登録する．
+            Kad.getIns().addAccessCount(cid);
+
+
+
         }catch(Exception e){
             e.printStackTrace();
         }
@@ -311,7 +584,7 @@ public class Kad {
         try{
             Path p1 = Paths.get("");
             Path p2 = p1.toAbsolutePath();
-            String path = p2 + "/"+Kad.providerPath + "/"+cid;
+            String path = p2 + "/"+Kad.getdataPath + "/"+cid;
             Path p = Paths.get(path);
 
             if(Files.exists(p)){
@@ -333,6 +606,29 @@ public class Kad {
             Path p2 = p1.toAbsolutePath();
             ObjectInputStream ois = new ObjectInputStream(new FileInputStream(p2 + "/"+Kad.providerPath + "/"+cid));
             obj = (CborObject.CborMap)ois.readObject();
+            ois.close();
+
+            //次に，dataを読み出す．
+            //byte[]である．
+            ObjectInputStream bis = new ObjectInputStream(new FileInputStream(p2 + "/" + Kad.getdataPath + "/" + cid));
+            CborObject.CborByteArray cdata = (CborObject.CborByteArray) bis.readObject();
+          //  byte[] data = bis.readAllBytes();
+        //    CborObject cObj = CborObject.fromByteArray(data);
+
+          //  CborObject.CborByteArray cdata = (CborObject.CborByteArray) cObj;
+            obj.put("RawData", cdata);
+            bis.close();
+
+            //最後に，cMapのカウントアップする．
+            if(Kad.getIns().cMap.containsKey(cid)){
+                Kad.getIns().addAccessCount(cid);
+
+            }else{
+                Kad.getIns().registerContentInfo(cid);
+                Kad.getIns().addAccessCount(cid);
+            }
+            return obj;
+
         }catch(Exception e){
             e.printStackTrace();
         }
@@ -434,11 +730,215 @@ public class Kad {
         }
         return Kad.own;
     }
-    public boolean isPeerExist(Multiaddr addr){
 
-        if(!Kad.isPrivate){
-           return true;
+    public boolean checkPeer(PeerId peer, Multiaddr addr){
+
+        Host us = Kad.getIns().getNode();
+        String str = addr.toString();
+        String foreignStr = peer.toString() + ": ["+ addr.toString() + "]";
+        PeerAddresses addrs = Kad.genForeignPeerAddresses(foreignStr);
+        try{
+            Dht.Record res = Kad.getIns().getKadDHT().dialPeer(addrs, us).orTimeout(5, TimeUnit.SECONDS).join().checkPrivate().join();
+            System.out.println();
+            return true;
+        }catch(Exception e){
+            return false;
         }
+    }
+
+
+    public static double genDouble(double min, double max){
+        return Kad.getRoundedValue(min + (double) (Math.random() * (max - min + 1)));
+
+    }
+
+    public static long genLong(long min, long max) {
+
+        return min + (long) (Math.random() * (max - min + 1));
+
+    }
+
+    public static int genInt(int  min, int max) {
+
+        return min + (int) (Math.random() * (max - min + 1));
+
+    }
+
+    public static double getRoundedValue(double value1) {
+        //  try{
+        BigDecimal value2 = new BigDecimal(String.valueOf(value1));
+        double retValue = value2.setScale(4, BigDecimal.ROUND_HALF_UP).doubleValue();
+        return retValue;
+
+    }
+
+
+    /**
+     * Int型の，一様／正規分布出力関数
+     * @param min
+     * @param max
+     * @param dist
+     * @param mu
+     * @return
+     */
+    public static int genInt2(int min, int  max, int dist, double mu){
+        max = Math.max(min, max);
+
+        if(min == max){
+            return min;
+        }
+        if(dist== 0){
+            //一様分布
+            return min + (int) (Math.random() * (max - min + 1));
+
+        }else{
+            //正規分布
+            double meanValue2 = min + (max-min)* mu;
+            double sig = (double)(Math.max((meanValue2-min), (max-meanValue2)))/3;
+            double ran2 = Kad.rDataGen.nextGaussian(meanValue2,sig);
+
+
+            if(ran2 < min){
+                ran2 =(int) min;
+            }
+
+            if(ran2 > max){
+                ran2 = (int)max;
+            }
+
+            return (int) ran2;
+        }
+
+    }
+
+    /**
+     * Double型の，一様／正規分布出力関数
+     * @param min
+     * @param max
+     * @param mu
+     * @return
+     */
+    public static double  genDouble2(double min, double max, double mu){
+        if(min == max){
+            return min;
+        }
+
+        //正規分布
+        double meanValue2 = min + (max-min)* mu;
+        double sig = (double)(Math.max((meanValue2-min), (max-meanValue2)))/3;
+        double ran2 = Kad.getRoundedValue(Kad.rDataGen.nextGaussian(meanValue2,sig));
+
+
+        if(ran2 < min){
+            ran2 =(double) min;
+        }
+
+        if(ran2 > max){
+            ran2 = (double)max;
+        }
+
+        return (double) ran2;
+
+
+    }
+
+
+    /**
+     * Long型の一様・正規分布出力関数
+     * @param min
+     * @param max
+     * @param dist
+     * @param mu
+     * @return
+     */
+    public static long genLong2(long min, long max, int dist, double mu){
+        if(min == max){
+            return min;
+        }
+        if(dist== 0){
+            //一様分布
+            return min + (long) (Math.random() * (max - min + 1));
+
+        }else{
+            //正規分布
+            double meanValue2 = min + (max-min)* mu;
+            double sig = (double)(Math.max((meanValue2-min), (max-meanValue2)))/3;
+            double ran2 = Kad.rDataGen.nextGaussian(meanValue2,sig);
+
+
+            if(ran2 < min){
+                ran2 =(double) min;
+            }
+
+            if(ran2 > max){
+                ran2 = (double)max;
+            }
+
+            return (long) ran2;
+        }
+
+    }
+
+
+    public boolean isPeerExist(PeerId peer, Multiaddr addr){
+
+
+        return true;
+/*
+
+        List<String> resolved = new LinkedList<String>();
+        String rawStr = addr.toString() + "/ipfs/"+peer.toString();
+        resolved.add(rawStr);
+        List<? extends CompletableFuture<? extends KademliaController>> futures = resolved.stream()
+                .parallel()
+                //.map(taddr -> Kad.getIns().getKadDHT().dial(this.node, Multiaddr.fromString(taddr)).getController())
+                .map(taddr -> Kad.getIns().getKadDHT().dial(this.node, Multiaddr.fromString(taddr)).getController())
+                .collect(Collectors.toList());
+        int successes = 0;
+        for (CompletableFuture<? extends KademliaController> future : futures) {
+            try {
+
+                future.orTimeout(5, TimeUnit.SECONDS).join();
+                successes++;
+                Dht.Record res = future.get().checkPrivate().join();
+                ByteString bs = res.getValue();
+                CborObject cbor = CborObject.fromByteArray(bs.toByteArray());
+                CborObject.CborString incommingSwarmKey= (CborObject.CborString)cbor;
+                //swarm keyチェック
+                if(Kad.getIns().getSwarmKey().equals(incommingSwarmKey)){
+                    return true;
+                }else{
+                    return false;
+                }
+
+
+            } catch (Exception e) {
+                return false;
+            }
+
+        }
+
+*/
+        /*
+        Host us = Kad.getIns().getNode();
+        String str = addr.toString();
+        String foreignStr = peer.toString() + ": ["+ addr.toString() + "]";
+        PeerAddresses addrs = Kad.genForeignPeerAddresses(foreignStr);
+        try{
+            Dht.Record res = Kad.getIns().getKadDHT().dialPeer(addrs, us).orTimeout(5, TimeUnit.SECONDS).join().checkPrivate().join();
+            System.out.println();
+            return true;
+        }catch(Exception e){
+            return false;
+        }
+*/
+
+
+       // ByteString bs = res.getValue();
+
+
+/*
+
         //IP4アドレスの取得
         String multiAddr = addr.toString();
         boolean ret = false;
@@ -461,6 +961,8 @@ public class Kad {
         }else{
             return false;
         }
+*/
+
     }
 
 
