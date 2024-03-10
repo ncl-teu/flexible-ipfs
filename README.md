@@ -46,3 +46,17 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=ファイ�
 ~~~
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/getvalue?cid=対象コンテンツのCID"
 ~~~
+### 属性情報と各基準値のPUT
+- 例えば，24時間を1時間単位で検索させたい場合は，1,2,3,...24という値をtimeという属性値でputします．各時間の担当ノードが決められて，それらにputされます．
+- 属性検索をする場合は，事前にこの処理が必要となります．
+~~~
+//以下の例は，timeという属性について，08時～10時までの値を担当ノードへputしている．各値の担当ノードはKademliaによって自動的に決められます．
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/putattrs?attrname=time&min=08&max=10"
+~~~
+### 1つ以上の属性について，それらの値の範囲指定によるコンテンツ検索
+~~~
+//timeが09~10で，かつcidのみを取得する場合（コンテンツそのものが欲しい場合は，cidonly以降を消す．）
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_09_10&cidonly=true"
+//timeが08~10で，かつtemp(温度)が25～35である場合で，cidのみを取得する場合（コンテンツそのものが欲しい場合は，cidonly以降を消す．）
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10-temp_25_35&cidonly=true"
+~~~
