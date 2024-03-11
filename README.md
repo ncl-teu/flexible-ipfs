@@ -19,6 +19,7 @@ ant clean
   - \classes\production\nabu-master
   - libディレクトリ内の全てのjarファイル
 - 以下のコマンドでは，一斉に実行に必要なファイル群をそれらにアップロードします．その際，peerlistファイルで，ノードのIP，sshログインユーザ名，パスワードを指定する必要があります．
+- classes/, ./にある設定ファイル群，lib/をuploadします．
 ~~~
 ./upload.sh
 ~~~
