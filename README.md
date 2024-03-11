@@ -81,5 +81,5 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/inittable"
   curl -X POST "http://127.0.0.1:5001/api/v0/exit"
 ~~~
 ## 開発用ドキュメント
-- クライアントから要求を受け付けるAPIHandler.javaと，要求下からのクエリを受けるKademliaEngine.javaがあります．
+- クライアントから要求を受け付けるAPIHandler.javaと，要求元からのクエリを受けるKademliaEngine.javaがあります．
 
