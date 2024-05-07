@@ -155,6 +155,9 @@ public class KademliaEngine {
                     // CborObject cbor2 = CborObject.fromByteArray(content);
                     // map =  (CborObject.CborMap) cbor2;
                     CborObject.CborMap myMap = Kad.readMerkleDAG(icid);
+                    if(myMap == null){
+                        return null;
+                    }
 
                     //もしcidonlyフラグが立っていれば，この時点で削除する．
                     if(isCidOnly){
@@ -381,13 +384,18 @@ public class KademliaEngine {
                                 //byte[] cByte = Kad.getDataFromMerkleDAG(cid);
                                 //あとは，Mapに設定するのみ．
                                 CborObject.CborMap retMap = Kad.readMerkleDAG(cid);
-                                retMap.put("cid", new CborObject.CborString(cid));
-                                if(isCidOnly){
-                                    //retMapから，RawDataを削除
-                                    retMap.put("RawData", new CborObject.CborString(null));
+                                if(retMap == null){
+
+                                }else{
+                                    retMap.put("cid", new CborObject.CborString(cid));
+                                    if(isCidOnly){
+                                        //retMapから，RawDataを削除
+                                        retMap.put("RawData", new CborObject.CborString(null));
+                                    }
+
+                                    retList.add(retMap);
                                 }
 
-                                retList.add(retMap);
 
                             }else{
                                 continue;
@@ -504,10 +512,18 @@ public class KademliaEngine {
 
                     CborObject.CborMap map = Kad.readMerkleDAG(cid);
 
-                    builder = builder.setRecord(Dht.Record.newBuilder()
-                            .setKey(msg.getKey())
-                            //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
-                            .setValue(ByteString.copyFrom(map.toByteArray())));
+                    if(map != null){
+                        builder = builder.setRecord(Dht.Record.newBuilder()
+                                .setKey(msg.getKey())
+                                //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                                .setValue(ByteString.copyFrom(map.toByteArray())));
+                    }else{
+                        builder = builder.setRecord(Dht.Record.newBuilder()
+                                .setKey(msg.getKey())
+                                //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                                .setValue(ByteString.copyFrom("Not Found".getBytes())));
+                    }
+
             /*    } else {
                     System.out.println("****NG!!!****");
                     builder = builder.addAllCloserPeers(getKClosestPeers(msg.getKey().toByteArray())

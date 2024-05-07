@@ -93,7 +93,8 @@ public class IPNS {
                                                     LocalDateTime expiry,
                                                     long validityType,
                                                     long sequence,
-                                                    long ttl) {
+                                                    long ttl
+                                                    ) {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("RawData", new CborObject.CborByteArray(rawData));
         state.put("TTL", new CborObject.CborLong(ttl));
@@ -104,6 +105,33 @@ public class IPNS {
         state.put("ValidityType", new CborObject.CborLong(validityType));
         return CborObject.CborMap.build(state).serialize();
     }
+    public static byte[] createCborDataForIpnsEntryForAdd(byte[] rawData,
+                                                    String pathToPublish,
+                                                    LocalDateTime expiry,
+                                                    long validityType,
+                                                    long sequence,
+                                                    long ttl,
+                                                    LinkedList<Cid> cidList) {
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("RawData", new CborObject.CborByteArray(rawData));
+        state.put("TTL", new CborObject.CborLong(ttl));
+        state.put("Value", new CborObject.CborByteArray(pathToPublish.getBytes()));
+        state.put("Sequence", new CborObject.CborLong(sequence));
+        String expiryString = formatExpiry(expiry);
+        state.put("Validity", new CborObject.CborByteArray(expiryString.getBytes(StandardCharsets.UTF_8)));
+        state.put("ValidityType", new CborObject.CborLong(validityType));
+
+        Iterator<Cid> cIte = cidList.iterator();
+        LinkedList<CborObject.CborString> cidStrList = new LinkedList<CborObject.CborString>();
+        while(cIte.hasNext()){
+            Cid ccid = cIte.next();
+            cidStrList.add(new CborObject.CborString(ccid.toString()));
+        }
+        state.put("CidList", new CborObject.CborList(cidStrList));
+
+        return CborObject.CborMap.build(state).serialize();
+    }
+
 
     /**
      * Data部のバイナリ生成メソッド
