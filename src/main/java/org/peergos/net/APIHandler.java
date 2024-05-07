@@ -68,6 +68,9 @@ public class APIHandler extends Handler {
 
     public static final String EXIT = "exit";
 
+    public static final String ADD = "add";
+
+
 
 
     private final EmbeddedIpfs ipfs;
@@ -225,7 +228,7 @@ public class APIHandler extends Handler {
                     }
                     Optional<Integer> providersParam = Optional.ofNullable(params.get("num-providers")).map(a -> Integer.parseInt(a.get(0)));
                     int numProviders = providersParam.isPresent() && providersParam.get() > 0 ? providersParam.get() : 20;
-                    List<PeerAddresses> providers = ipfs.dht.findProviders(Cid.decode(args.get(0)), ipfs.node, numProviders).join();
+                    List<PeerAddresses> providers = ipfs.dht.findProviders(Kad.genCid(args.get(0))/*Cid.decode(args.get(0))*/, ipfs.node, numProviders).join();
 
                     StringBuilder sb = new StringBuilder();
                     Map<String, Object> entry = new HashMap<>();
@@ -238,6 +241,59 @@ public class APIHandler extends Handler {
                     entry.put("Responses", responses);
                     sb.append(JSONParser.toString(entry) + "\n");
                     replyBytes(httpExchange, sb.toString().getBytes());
+                    break;
+                }
+
+                //コンテンツを公開用ディレクトリへ複製する．その後，IDの最も近しいものにputする．
+                //コンテンツのみをputする．
+                //gatewayが居ないので，分散型にてputを行う．
+                //curl -X POST "http://127.0.0.1:5001/api/v0/add?file=xxxx
+                case ADD: {
+                    Optional<String> file = Optional.ofNullable(params.get("file")).map(a -> a.get(0));
+
+                    String content = null;
+                    byte[] allByte = null;
+                    LinkedList<byte[]> chunkList = new LinkedList<byte[]>();
+
+                    if (file.isEmpty()) {
+                        //throw new APIException("argument \"cid\" is required\n");
+                        throw new APIException("Please specify the file path.\n");
+
+                    }
+                    Path filePath = Paths.get(file.get());
+                    //content = Files.readString(filePath);
+                    allByte = Files.readAllBytes(filePath);
+                    //Chunkごとにわける．
+                    chunkList = Kad.genChunkList(allByte);
+                    Iterator<byte[]> bIte = chunkList.iterator();
+                    LinkedList<Cid> cidList = new LinkedList<Cid>();
+                    //cidリストを作成する．
+                    while(bIte.hasNext()){
+                        byte[] ch = bIte.next();
+                        Cid ccid = Kad.genCid(ch);
+                        cidList.add(ccid);
+                    }
+
+                    //CIDを生成する．
+                   // Cid cid = Kad.genCid(allByte);
+                    Cid cid = cidList.getFirst();
+
+
+                    //通常のコンテンツPUT
+                    List<PeerAddresses> list = ipfs.dht.putRawContentforAdd(chunkList, /*content.getBytes(), */cid, ipfs.node, cidList);
+                    if (list.isEmpty()) {
+                        //cid = ipfs.blockstore.put(content.getBytes(), Cid.Codec.lookupIPLDName("raw")).join();
+                        throw new APIException("No target node found.\n");
+
+                    }
+                    Map res = new HashMap<>();
+                    int len = list.size();
+                    for (int i = 0; i < len; i++) {
+                        res.put("Addr" + i, list.get(i).toString());
+                    }
+                    res.put("CID_file", cid.toString());
+                    replyJson(httpExchange, JSONParser.toString(res));
+
                     break;
                 }
                 //属性つきコンテンツのPUT
@@ -272,12 +328,13 @@ public class APIHandler extends Handler {
                     }
                     Cid cid = Kad.genCid(content);
 
+
                     if (in_attrs.isEmpty()) {
                         //属性情報を指定していない場合
                         //通常のコンテンツPUT
                         List<PeerAddresses> list = ipfs.dht.putRawContent(content.getBytes(), cid, ipfs.node);
                         if (list.isEmpty()) {
-                            cid = ipfs.blockstore.put(content.getBytes(), Cid.Codec.lookupIPLDName("raw")).join();
+                            ipfs.blockstore.put(content.getBytes(), Cid.Codec.lookupIPLDName("raw")).join();
 
                         }
                         Map res = new HashMap<>();
@@ -368,10 +425,10 @@ public class APIHandler extends Handler {
                         while (mIte.hasNext()) {
                             CborObject.CborMap m = mIte.next();
                             //CborMapのRawDataを取り出して，dataフォルダへバイナリを書き出す．
-                            CborObject.CborString ccid = (CborObject.CborString)m.get("cid");
-                            String str_cid = ccid.value;
+                           // CborObject.CborString ccid = (CborObject.CborString)m.get("cid");
+                           // String str_cid = ccid.value;
                             //Kad.writeData(str_cid, m, "");
-                            Kad.writeMerkleDAG(str_cid, m);
+                            Kad.writeMerkleDAG(get_cid, m);
                             buf.append("[value:");
                             buf.append(new String(Kad.getDataFromMerkleDAG(m)));
                             buf.append("],");

@@ -133,6 +133,10 @@ public interface CborObject extends Cborable,Serializable {
             values.remove(key);
         }
 
+        public void remove(CborObject.CborString key){
+            values.remove(key);
+        }
+
         public boolean containsKey(String key) {
             return values.containsKey(new CborString(key));
         }
