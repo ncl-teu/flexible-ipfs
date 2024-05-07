@@ -160,11 +160,11 @@ public class ControlMain {
             channel_root.disconnect();
 */
             for (String file : fileList) {
-                final String fullFileName = localDirectory + "/" + file;
+                final String fullFileName = localDirectory + File.separator + file;
                 ChannelExec channel2 = (ChannelExec) session.openChannel("exec");
                 if (new File(fullFileName).isDirectory()) {
 
-                    final String subDir = remoteTargetDirectory + "/" + file;
+                    final String subDir = remoteTargetDirectory + File.separator + file;
                     channel2.setCommand("mkdir " + subDir);
                     channel2.connect();
                     channel2.disconnect();
@@ -176,15 +176,15 @@ public class ControlMain {
                     FileTime fileTime = Files.getLastModifiedTime(Paths.get(fullFileName));
                     long localMTime = fileTime.to(TimeUnit.SECONDS);
                     try{
-                        //channel.ls(remoteTargetDirectory + "/" + file);
-                        channel.lstat(remoteTargetDirectory + "/" + file);
+                        //channel.ls(remoteTargetDirectory + File.separator + file);
+                        channel.lstat(remoteTargetDirectory + File.separator + file);
                     }catch(Exception e){
                         //タイムスタンプのチェックを行う．
                         channel.put(fullFileName, remoteTargetDirectory, OVERWRITE);
-                        channel.setMtime(remoteTargetDirectory + "/" + file, (int)localMTime);
+                        channel.setMtime(remoteTargetDirectory + File.separator + file, (int)localMTime);
                     }
                     //リモートファイルのmtimeを取得
-                    SftpATTRS attrs = channel.lstat(remoteTargetDirectory + "/" + file);
+                    SftpATTRS attrs = channel.lstat(remoteTargetDirectory + File.separator + file);
                     int remoteMTime = attrs.getMTime();
 
 
@@ -192,7 +192,7 @@ public class ControlMain {
                     if(localMTime > remoteMTime){
                         //タイムスタンプのチェックを行う．
                         channel.put(fullFileName, remoteTargetDirectory, OVERWRITE);
-                        channel.setMtime(remoteTargetDirectory + "/" + file, (int)localMTime);
+                        channel.setMtime(remoteTargetDirectory + File.separator + file, (int)localMTime);
                     }
 
                 }

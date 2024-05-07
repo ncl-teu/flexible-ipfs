@@ -118,6 +118,8 @@ public class Kad {
 
     public static long putcontent_max;
 
+    public static long chunk_size;
+
 
     private Kad(){
 
@@ -179,7 +181,7 @@ public class Kad {
 
             Kad.putcontent_min = Long.valueOf(Kad.prop.getProperty("ipfs.put.contentnum_min")).longValue();
             Kad.putcontent_max = Long.valueOf(Kad.prop.getProperty("ipfs.put.contentnum_max")).longValue();
-            
+            Kad.chunk_size = 1024* Long.valueOf(Kad.prop.getProperty("ipfs.chunk.size")).longValue();
 
             this.cMap = new HashMap<String, ContentInfo>();
             this.configContentMap();
@@ -266,6 +268,29 @@ public class Kad {
             this.addAccessCount(cid);
 
         }
+    }
+
+    public static LinkedList<byte[]> genChunkList(byte[] allByte){
+        LinkedList<byte[]> chunkList = new LinkedList<byte[]>();
+
+        long len = allByte.length;
+        long j = 1;
+        long size = len / Kad.chunk_size;
+        if(len % Kad.chunk_size == 0){
+        }else{
+            size++;
+        }
+
+        for(long i=0;i<size;i++){
+            byte[] chunks;
+            if(i == size - 1){
+                chunks = Arrays.copyOfRange(allByte, (int)(Kad.chunk_size * i), (int)(len-1));
+            }else{
+                chunks = Arrays.copyOfRange(allByte, (int)(Kad.chunk_size * i), (int)(Kad.chunk_size * (i+1)));
+            }
+            chunkList.add(chunks);
+        }
+        return chunkList;
     }
 
     public void registerContentInfo(String cid){
@@ -506,12 +531,12 @@ public class Kad {
             Path p2 = p1.toAbsolutePath();
             //mapからRawDataを取得する．
             CborObject.CborByteArray dataArray = (CborObject.CborByteArray) map.get("RawData");
-            File dir2 = new File(p2 + "/" + Kad.getdataPath);
+            File dir2 = new File(p2 + File.separator + Kad.getdataPath);
             if(!dir2.exists()){
                 dir2.mkdir();
             }
 
-            FileOutputStream fos = new FileOutputStream(p2 + "/" + Kad.getdataPath + "/" + cid);
+            FileOutputStream fos = new FileOutputStream(p2 + File.separator + Kad.getdataPath + File.separator + cid);
             BufferedOutputStream bos = new BufferedOutputStream(fos);
             bos.write(dataArray.toByteArray());
             bos.close();
@@ -544,25 +569,36 @@ public class Kad {
             Path p1 = Paths.get("");
             Path p2 = p1.toAbsolutePath();
 
-            File dir_data = new File(p2 + "/" + Kad.getdataPath);
+            File dir_data = new File(p2 + File.separator + Kad.getdataPath);
             if(!dir_data.exists()){
                 dir_data.mkdir();
             }
 
-            ObjectOutputStream oosdata = new ObjectOutputStream(new FileOutputStream(p2 + "/"+Kad.getdataPath + "/"+cid));
+            ObjectOutputStream oosdata = new ObjectOutputStream(new FileOutputStream(p2 + File.separator+Kad.getdataPath + File.separator+cid));
             oosdata.writeObject(data);
             oosdata.close();
 
-            //書き出しができたら，MerkleDAGからRawDataを削除する．
-            map.put("RawData", null);
 
-            File dir = new File(p2 + "/" + Kad.providerPath);
+            CborObject cbor = CborObject.fromByteArray(map.toByteArray());
+            //if (! (cbor instanceof CborObject.CborMap))
+            CborObject.CborMap map2 = (CborObject.CborMap) cbor;
+            map2.remove(new CborObject.CborString("RawData"));
+
+
+            //書き出しができたら，MerkleDAGからRawDataを削除する．
+           // map.put("RawData", null);
+            //map.remove("RawData");
+           // map.remove(new CborObject.CborString("RawData"));
+
+
+
+            File dir = new File(p2 + File.separator + Kad.providerPath);
             if(!dir.exists()){
                dir.mkdir();
             }
 
-            ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(p2 + "/"+Kad.providerPath + "/"+cid));
-            oos.writeObject(map);
+            ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(p2 + File.separator+Kad.providerPath + File.separator+cid));
+            oos.writeObject(map2);
             oos.close();
 
             //cMapへ登録する．
@@ -584,7 +620,7 @@ public class Kad {
         try{
             Path p1 = Paths.get("");
             Path p2 = p1.toAbsolutePath();
-            String path = p2 + "/"+Kad.getdataPath + "/"+cid;
+            String path = p2 + File.separator+Kad.getdataPath + File.separator+cid;
             Path p = Paths.get(path);
 
             if(Files.exists(p)){
@@ -604,20 +640,26 @@ public class Kad {
         try{
             Path p1 = Paths.get("");
             Path p2 = p1.toAbsolutePath();
-            ObjectInputStream ois = new ObjectInputStream(new FileInputStream(p2 + "/"+Kad.providerPath + "/"+cid));
+            Path p = Paths.get(p2 + File.separator+Kad.providerPath + File.separator+cid);
+            if(!Files.exists(p)){
+                return null;
+            }
+            ObjectInputStream ois = new ObjectInputStream(new FileInputStream(p2 + File.separator+Kad.providerPath + File.separator+cid));
             obj = (CborObject.CborMap)ois.readObject();
             ois.close();
 
             //次に，dataを読み出す．
             //byte[]である．
-            ObjectInputStream bis = new ObjectInputStream(new FileInputStream(p2 + "/" + Kad.getdataPath + "/" + cid));
+            ObjectInputStream bis = new ObjectInputStream(new FileInputStream(p2 + File.separator + Kad.getdataPath + File.separator + cid));
             CborObject.CborByteArray cdata = (CborObject.CborByteArray) bis.readObject();
+            bis.close();
           //  byte[] data = bis.readAllBytes();
         //    CborObject cObj = CborObject.fromByteArray(data);
 
           //  CborObject.CborByteArray cdata = (CborObject.CborByteArray) cObj;
             obj.put("RawData", cdata);
-            bis.close();
+            //obj.put("cid", new CborObject.CborString(cid));
+
 
             //最後に，cMapのカウントアップする．
             if(Kad.getIns().cMap.containsKey(cid)){
@@ -685,6 +727,10 @@ public class Kad {
         return cid;
     }
 
+    public static Cid genCid(byte[] content){
+        Cid cid = new Cid(0, Cid.Codec.Raw, Multihash.Type.id, Hash.sha256(content));
+        return cid;
+    }
     public static Cid genCid(String content){
         Cid cid = new Cid(0, Cid.Codec.Raw, Multihash.Type.id, Hash.sha256(content.getBytes()));
         byte[] bbytes;

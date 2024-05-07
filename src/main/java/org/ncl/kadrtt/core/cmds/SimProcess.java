@@ -13,8 +13,7 @@ import java.util.Map;
 import java.util.StringTokenizer;
 
 /**
- * Bootstrapノードかどうかをチェック
- * - もしbootstrapであれば，
+ *
  */
 public class SimProcess {
     public static void main(String[] args) {
