@@ -4,6 +4,7 @@ import io.ipfs.cid.Cid;
 import io.ipfs.multiaddr.*;
 import io.ipfs.multihash.*;
 import io.libp2p.core.*;
+import io.libp2p.core.multiformats.Multiaddr;
 import io.libp2p.core.multistream.*;
 import io.libp2p.protocol.*;
 import org.ncl.kadrtt.core.Kad;
@@ -16,6 +17,8 @@ import org.peergos.protocol.dht.*;
 import org.peergos.protocol.http.*;
 
 import java.io.*;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -47,11 +50,40 @@ public class EmbeddedIpfs {
         Kad.getIns().setNode(this.node);
         String globalIP = Kad.getIns().getGlobalIP();
         MultiAddress mAddr = new MultiAddress("/ip4/"+globalIP + "/tcp/4001");
+        String localIP = null;
         List<MultiAddress> addrList = new LinkedList<MultiAddress>();
+
+        try{
+            //ローカルIPの取得
+            localIP =java.net.InetAddress.getLocalHost().toString();
+            LinkedList<InetAddress> ipList = Kad.getAllIP();
+            Iterator<InetAddress> ipIte = ipList.iterator();
+
+            while(ipIte.hasNext()){
+                InetAddress add = ipIte.next();
+                if(add.isSiteLocalAddress()){
+                    MultiAddress mAddr2 = new MultiAddress("/ip4/"+add.getHostAddress() + "/tcp/4001");
+                    addrList.add(mAddr2);
+                    // /ip4/60.112.207.90/tcp/4001/
+                    StringBuffer buf = new StringBuffer("/ip4/");
+                    buf.append(add.getHostAddress());
+                    buf.append("/tcp/4001/");
+                    Multiaddr newAddr = new Multiaddr(buf.toString());
+                    node.listenAddresses().add(newAddr);
+
+
+                }
+            }
+            //System.out.println();
+        }catch(Exception e){
+            e.printStackTrace();
+        }
         addrList.add(mAddr);
         Multihash deHash = Multihash.deserialize(this.node.getPeerId().getBytes());
         PeerAddresses addrs = new PeerAddresses(deHash,addrList );
         Kad.getIns().setOwnAddresses(addrs);
+
+      //  node.listenAddresses().addAll
 
         this.blockstore = blockstore;
         this.records = records;
@@ -60,6 +92,7 @@ public class EmbeddedIpfs {
         this.p2pHttp = p2pHttp;
         this.bootstrap = bootstrap;
         this.blocks = new BitswapBlockService(node, bitswap);
+        //this.blocks = null;
 
 
 
@@ -110,6 +143,10 @@ public class EmbeddedIpfs {
         PeriodicBlockProvider blockProvider = new PeriodicBlockProvider(22 * 3600_000L,
                 () -> blockstore.refs().join().stream(), node, dht, blockstore.toPublish);
         blockProvider.start();
+
+
+
+
     }
 
     public CompletableFuture<Void> stop() throws Exception {

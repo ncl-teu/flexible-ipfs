@@ -19,6 +19,7 @@ public class RamAddressBook implements AddressBook {
         synchronized (val) {
             val.addAll(Arrays.asList(multiaddrs));
         }
+        System.out.println(peerId.toString() + " is Added");
         return CompletableFuture.completedFuture(null);
     }
 

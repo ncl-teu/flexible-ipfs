@@ -38,14 +38,14 @@ public class PeriodicBlockProvider {
     }
 
     public void run() {
-        while (true) {
+        /*while (true) {
             try {
                 publish(getBlocks.get());
                 Thread.sleep(reprovideIntervalMillis);
             } catch (Throwable e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             }
-        }
+        }*/
     }
 
     public void provideNewBlocks() {

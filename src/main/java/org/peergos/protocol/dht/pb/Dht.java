@@ -1118,7 +1118,13 @@ public final class Dht {
 
       GET_VALUE_AT_LEAF(8),
 
-      QUERY_SWAM_KEY(9)
+      QUERY_SWAM_KEY(9),
+
+      PUT_MERKLEDAG(10),
+
+      GET_MERKLEDAG(11),
+
+      GET_CHUNK(12)
       ;
 
       /**
@@ -1175,6 +1181,9 @@ public final class Dht {
           case 7: return GET_VALUE_WITH_ATTRS;
           case 8: return GET_VALUE_AT_LEAF;
           case 9: return QUERY_SWAM_KEY;
+          case 10: return PUT_MERKLEDAG;
+          case 11: return GET_MERKLEDAG;
+          case 12: return GET_CHUNK;
           default: return null;
         }
       }

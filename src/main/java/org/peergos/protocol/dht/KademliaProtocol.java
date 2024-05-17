@@ -1,6 +1,8 @@
 package org.peergos.protocol.dht;
 
 import io.libp2p.core.*;
+import io.libp2p.core.mux.StreamMuxer;
+import io.libp2p.core.transport.Transport;
 import io.libp2p.protocol.*;
 import org.jetbrains.annotations.*;
 import org.peergos.protocol.dht.pb.Dht;
@@ -32,10 +34,15 @@ public class KademliaProtocol extends ProtobufProtocolHandler<KademliaController
         this.swarmKey = swarmKey;
     }
 
+
     @NotNull
     @Override
     protected CompletableFuture<KademliaController> onStartInitiator(@NotNull Stream stream) {
         engine.addOutgoingConnection(stream.remotePeerId(), stream.getConnection().remoteAddress());
+        //engine.addOutgoingConnection(stream.remotePeerId(), stream.getConnection().localAddress());
+        StreamMuxer.Session ses = stream.getConnection().muxerSession();
+        Transport tran = stream.getConnection().transport();
+
         ReplyHandler handler = new ReplyHandler(stream);
         stream.pushHandler(handler);
         return CompletableFuture.completedFuture(handler);
@@ -46,6 +53,12 @@ public class KademliaProtocol extends ProtobufProtocolHandler<KademliaController
     @Override
     protected CompletableFuture<KademliaController> onStartResponder(@NotNull Stream stream) {
         engine.addIncomingConnection(stream.remotePeerId(), stream.getConnection().remoteAddress());
+        //Add by Kanemitsu
+        //engine.addIncomingConnection(stream.remotePeerId(), stream.getConnection().localAddress());
+        StreamMuxer.Session ses = stream.getConnection().muxerSession();
+        Transport tran = stream.getConnection().transport();
+
+
         IncomingRequestHandler handler = new IncomingRequestHandler(engine);
         stream.pushHandler(handler);
         return CompletableFuture.completedFuture(handler);

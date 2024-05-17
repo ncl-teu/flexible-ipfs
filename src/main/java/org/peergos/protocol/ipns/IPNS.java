@@ -127,10 +127,33 @@ public class IPNS {
             Cid ccid = cIte.next();
             cidStrList.add(new CborObject.CborString(ccid.toString()));
         }
-        state.put("CidList", new CborObject.CborList(cidStrList));
+        state.put("cidlist", new CborObject.CborList(cidStrList));
 
         return CborObject.CborMap.build(state).serialize();
     }
+
+    public static byte[] createCborDataForIpnsEntrySingle(byte[] rawData,
+                                                          String pathToPublish,
+                                                          LocalDateTime expiry,
+                                                          long validityType,
+                                                          long sequence,
+                                                          long ttl) {
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("RawData", new CborObject.CborByteArray(rawData));
+        /*state.put("TTL", new CborObject.CborLong(ttl));
+        state.put("Value", new CborObject.CborByteArray(pathToPublish.getBytes()));
+        state.put("Sequence", new CborObject.CborLong(sequence));
+        String expiryString = formatExpiry(expiry);
+        state.put("Validity", new CborObject.CborByteArray(expiryString.getBytes(StandardCharsets.UTF_8)));
+        state.put("ValidityType", new CborObject.CborLong(validityType));
+        */
+
+        return CborObject.CborMap.build(state).serialize();
+    }
+
+
+
+
 
 
     /**

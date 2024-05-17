@@ -6,6 +6,8 @@ import io.ipfs.multibase.binary.Base32;
 import io.ipfs.multihash.Multihash;
 import io.libp2p.core.PeerId;
 import org.ncl.kadrtt.core.Kad;
+import org.ncl.kadrtt.core.cmds.ChunkGetThread;
+import org.ncl.kadrtt.core.cmds.ChunkPutThread;
 import org.peergos.*;
 import org.peergos.blockstore.RamBlockstore;
 import org.peergos.cbor.CborObject;
@@ -20,6 +22,7 @@ import org.peergos.util.JSONParser;
 import org.peergos.util.Logging;
 import org.peergos.util.Version;
 
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -68,7 +71,8 @@ public class APIHandler extends Handler {
 
     public static final String EXIT = "exit";
 
-    public static final String ADD = "add";
+    public static final String ADD = "dht/add";
+
 
 
 
@@ -105,7 +109,7 @@ public class APIHandler extends Handler {
                     replyJson(httpExchange, JSONParser.toString(res));
                     break;
                 }
-                case GET: { // https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-block-get
+                /*case GET: { // https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-block-get
                     if (args == null || args.size() != 1) {
                         throw new APIException("argument \"ipfs-path\" is required");
                     }
@@ -221,7 +225,7 @@ public class APIHandler extends Handler {
                     Boolean added = ipfs.blockstore.bloomAdd(Cid.decode(args.get(0))).join();
                     replyBytes(httpExchange, added.toString().getBytes());
                     break;
-                }
+                }*/
                 case FIND_PROVS: {
                     if (args == null || args.size() != 1) {
                         throw new APIException("argument \"cid\" is required\n");
@@ -244,10 +248,11 @@ public class APIHandler extends Handler {
                     break;
                 }
 
-                //コンテンツを公開用ディレクトリへ複製する．その後，IDの最も近しいものにputする．
+                //コンテンツを複数チャンクへ分割する．merkleDAGは，コンテンツ全体のハッシュ値として計算され，そのIDに近いノードへputされる．
+                //各チャンクは個別に非同期でputされる．put本人には，全チャンクが複製される．
                 //コンテンツのみをputする．
                 //gatewayが居ないので，分散型にてputを行う．
-                //curl -X POST "http://127.0.0.1:5001/api/v0/add?file=xxxx
+                //curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxxx
                 case ADD: {
                     Optional<String> file = Optional.ofNullable(params.get("file")).map(a -> a.get(0));
 
@@ -265,22 +270,15 @@ public class APIHandler extends Handler {
                     allByte = Files.readAllBytes(filePath);
                     //Chunkごとにわける．
                     chunkList = Kad.genChunkList(allByte);
-                    Iterator<byte[]> bIte = chunkList.iterator();
-                    LinkedList<Cid> cidList = new LinkedList<Cid>();
-                    //cidリストを作成する．
-                    while(bIte.hasNext()){
-                        byte[] ch = bIte.next();
-                        Cid ccid = Kad.genCid(ch);
-                        cidList.add(ccid);
-                    }
+                    LinkedList<Cid> cidList = Kad.genCidList(chunkList);
+
+                    Cid orgCid = Kad.genCid(allByte);
 
                     //CIDを生成する．
                    // Cid cid = Kad.genCid(allByte);
                     Cid cid = cidList.getFirst();
-
-
                     //通常のコンテンツPUT
-                    List<PeerAddresses> list = ipfs.dht.putRawContentforAdd(chunkList, /*content.getBytes(), */cid, ipfs.node, cidList);
+                    List<PeerAddresses> list = ipfs.dht.putRawContentforAdd(chunkList, orgCid, ipfs.node, cidList);
                     if (list.isEmpty()) {
                         //cid = ipfs.blockstore.put(content.getBytes(), Cid.Codec.lookupIPLDName("raw")).join();
                         throw new APIException("No target node found.\n");
@@ -288,10 +286,10 @@ public class APIHandler extends Handler {
                     }
                     Map res = new HashMap<>();
                     int len = list.size();
-                    for (int i = 0; i < len; i++) {
+                    for (int i = 0; i < 1; i++) {
                         res.put("Addr" + i, list.get(i).toString());
                     }
-                    res.put("CID_file", cid.toString());
+                    res.put("CID_file", orgCid.toString());
                     replyJson(httpExchange, JSONParser.toString(res));
 
                     break;
@@ -313,18 +311,22 @@ public class APIHandler extends Handler {
                     Optional<String> in_attrs = Optional.ofNullable(params.get("attr")).map(a -> a.get(0));
                     // Optional<String> attrValueOpt = Optional.ofNullable(params.get("attrvalue")).map(a -> a.get(0));
 
-                    String content = null;
+                    byte[] content = null;
+                    String content_str = null;
                     if (file.isEmpty()) {
                         //throw new APIException("argument \"cid\" is required\n");
                         if (in_val.isEmpty()) {
                             throw new APIException("file or value should be specified.");
                         } else {
-                            content = in_val.get();
+                            content_str = in_val.get();
+                            content = content_str.getBytes();
                         }
 
                     } else {
                         Path filePath = Paths.get(file.get());
-                        content = Files.readString(filePath);
+                        content = Files.readAllBytes(filePath);
+
+
                     }
                     Cid cid = Kad.genCid(content);
 
@@ -332,9 +334,10 @@ public class APIHandler extends Handler {
                     if (in_attrs.isEmpty()) {
                         //属性情報を指定していない場合
                         //通常のコンテンツPUT
-                        List<PeerAddresses> list = ipfs.dht.putRawContent(content.getBytes(), cid, ipfs.node);
+                        List<PeerAddresses> list = ipfs.dht.putRawContent(content, cid, ipfs.node);
                         if (list.isEmpty()) {
-                            ipfs.blockstore.put(content.getBytes(), Cid.Codec.lookupIPLDName("raw")).join();
+                            //ipfs.blockstore.put(content, Cid.Codec.lookupIPLDName("raw")).join();
+                            throw new APIException("No target node found.\n");
 
                         }
                         Map res = new HashMap<>();
@@ -373,9 +376,9 @@ public class APIHandler extends Handler {
                         }
 
                         //属性＋コンテンツをputする．
-                        List<PeerAddresses> list = ipfs.dht.putContentWithAttr(content.getBytes(), cid, attrList, ipfs.node);
+                        List<PeerAddresses> list = ipfs.dht.putContentWithAttr(content, cid, attrList, ipfs.node);
                         if (list.isEmpty()) {
-                            cid = ipfs.blockstore.put(content.getBytes(), Cid.Codec.lookupIPLDName("raw")).join();
+                            cid = ipfs.blockstore.put(content, Cid.Codec.lookupIPLDName("raw")).join();
 
                         }
                         Map res = new HashMap<>();
@@ -391,7 +394,7 @@ public class APIHandler extends Handler {
                     break;
                 //CIDを指定してでの通常のコンテンツGET
                 case GET_VALUE:
-                    // curl -X POST "http://127.0.0.1:5001/api/v0/dht/getvalue?cid=1AYbp7Xk3AU6SoDF3tFNWyVLFHKSyJNca9Zcg6PXj3b2fj"
+                    // curl -X POST "http://127.0.0.1:5001/api/v0/dht/getvalue?cid=1AYbp7Xk3AU6SoDF3tFNWyVLFHKSyJNca9Zcg6PXj3b2fj&writepath=xxxx"
                     // /dht/getvalue?cid=xxxx&writepath=xxxx
                     //指定のcidにて値を取得する．FIND_PROVIDERSにてprovidersを取得し，それに対して値を要求する．
                     Optional<String> cidOpt = Optional.ofNullable(params.get("cid")).map(a -> a.get(0));
@@ -400,6 +403,7 @@ public class APIHandler extends Handler {
                         throw new APIException("argument \"cid\" is required\n");
 
                     }
+                    //対象コンテンツのcidを取得する．
                     String get_cid = cidOpt.get();
                     Multihash cid_converted = Multihash.fromBase58(get_cid);
                     // Multihash.deserialize(cid_converted);
@@ -413,13 +417,9 @@ public class APIHandler extends Handler {
                     mapList.add(mapList.get(0));
 
                     if (!mapList.isEmpty()) {
-
-                        //System.out.println("val:" + val);
-                        //replyBytes(httpExchange, val.getBytes());
-                        //replyJson(httpExchange, JSONParser.toString(new String(Kad.getDataFromMerkleDAG(map))));
-
-                        // ObjectMapper mapper = new ObjectMapper();
-                        // String json = mapper.writeValueAsString(mapList);
+                        CborObject.CborMap mDAG = mapList.get(0);
+                        Kad.writeMerkleDAGOnly(get_cid, mDAG);
+/*
                         StringBuffer buf = new StringBuffer();
                         Iterator<CborObject.CborMap> mIte = mapList.iterator();
                         while (mIte.hasNext()) {
@@ -433,8 +433,21 @@ public class APIHandler extends Handler {
                             buf.append(new String(Kad.getDataFromMerkleDAG(m)));
                             buf.append("],");
                         }
+*/
+                        CborObject.CborList cidList = (CborObject.CborList)mDAG.get("cidlist");
+                        ArrayList<CborObject.CborString> cidStrList = (ArrayList<CborObject.CborString>)cidList.value;
+                        Iterator<CborObject.CborString> cstrIte = cidStrList.iterator();
 
-                        replyJson(httpExchange, JSONParser.toString(buf.toString()));
+                        while(cstrIte.hasNext()){
+                            String tmpCID = cstrIte.next().value;
+                            //Multihash multihash_cid = Multihash.fromBase58(tmpCID);
+                            Kad.chunkGetExec.submit(new ChunkGetThread(ipfs.dht, tmpCID, ipfs.node));
+
+                        }
+
+                        replyJson(httpExchange, JSONParser.toString("FOUND!!: CID:"+get_cid));
+                        //chunk取得のスレッドを起動させる．
+
 
 
                     } else {

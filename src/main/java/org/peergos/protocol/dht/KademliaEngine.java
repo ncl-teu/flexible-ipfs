@@ -266,12 +266,11 @@ public class KademliaEngine {
                 //ipnsEntryのこと．
                 //cborの取り出し方．
                 //CborObject cbor = CborObject.fromByteArray(entry.getData().toByteArray());
-
                 Optional<IpnsMapping> mapping = IPNS.validateIpnsEntry(msg);
-
-                if (mapping.isPresent()) {
+                if (mapping != null) {
                     try{
-                        ipnsStore.put(mapping.get().publisher, mapping.get().value);
+
+                        //ipnsStore.put(mapping.get().publisher, mapping.get().value);
                         //cborに格納されている各種値を取得する．
                         Ipns.IpnsEntry entry = Ipns.IpnsEntry.parseFrom(msg.getRecord().getValue());
                         ByteString b_str = entry.getValue();
@@ -280,6 +279,7 @@ public class KademliaEngine {
                         CborObject cbor = CborObject.fromByteArray(entry.getData().toByteArray());
                         //if (! (cbor instanceof CborObject.CborMap))
                         CborObject.CborMap map = (CborObject.CborMap) cbor;
+
                         //MerkleDAGとしてファイルに書き出す．
                         //ファイル名は，cid
 
@@ -328,7 +328,13 @@ public class KademliaEngine {
 
                         }else{
                             //通常のコンテンツPUTの場合，ファイル保存する．
-                            Kad.writeMerkleDAG(cid, map);
+                            if(map.keySet().size() == 1){
+                                //RawDataのみの場合，dataのみ書き込む．
+                                Kad.writeData(cid, map);
+                            }else{
+                                Kad.writeMerkleDAG(cid, map);
+
+                            }
                         }
 
 
@@ -340,6 +346,36 @@ public class KademliaEngine {
 
                 }
                 break;
+            }
+
+
+            case PUT_MERKLEDAG:
+            {
+
+                Optional<IpnsMapping> mapping = IPNS.validateIpnsEntry(msg);
+                if (mapping != null) {
+
+                     try {
+                         //cborに格納されている各種値を取得する．
+                         Ipns.IpnsEntry entry = Ipns.IpnsEntry.parseFrom(msg.getRecord().getValue());
+                         ByteString b_str = entry.getValue();
+                         String path_cid = new String(b_str.toByteArray());
+                         String cid = path_cid.replace("/ipfs/", "");
+                         CborObject cbor = CborObject.fromByteArray(entry.getData().toByteArray());
+                         //if (! (cbor instanceof CborObject.CborMap))
+                         CborObject.CborMap map = (CborObject.CborMap) cbor;
+
+                         //ファイル書き込み
+                         Kad.writeMerkleDAGOnly(cid, map);
+
+                     }catch(Exception e){
+                         e.printStackTrace();
+                     }
+                    stream.writeAndFlush(msg);
+
+                }
+                break;
+
             }
             //担当ノードからのコンテンツ取得依頼が来たとき
             case GET_VALUE_AT_LEAF:{
@@ -489,6 +525,28 @@ public class KademliaEngine {
                     break;
                 }
             }
+            //チャンク取得要求
+            case GET_CHUNK: {
+                String cid = msg.getKey().toStringUtf8();
+                //Optional<IpnsRecord> ipnsRecord = ipnsStore.get(cid);
+                Dht.Message.Builder builder = msg.toBuilder();
+                CborObject.CborByteArray obj = Kad.readChunk(cid);
+
+                if(obj != null){
+                    builder = builder.setRecord(Dht.Record.newBuilder()
+                            .setKey(msg.getKey())
+                            //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                            .setValue(ByteString.copyFrom(obj.toByteArray())));
+                }else{
+                    builder = builder.setRecord(Dht.Record.newBuilder()
+                            .setKey(msg.getKey())
+                            //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                            .setValue(ByteString.copyFrom("Not Found".getBytes())));
+                }
+                stream.writeAndFlush(builder.build());
+
+                break;
+            }
             case GET_VALUE: {
 
                 //ここで例外発生
@@ -562,6 +620,30 @@ public class KademliaEngine {
                 Host us = Kad.getIns().node;
                 GetResult res = Kad.getIns().getKadDHT().dialPeer(remoteAddrs, us).orTimeout(5, TimeUnit.SECONDS).join().deliverValue(response).join();
 */
+                break;
+            }
+
+            case GET_MERKLEDAG:
+            {
+
+                    String cid = msg.getKey().toStringUtf8();
+                    Optional<IpnsRecord> ipnsRecord = ipnsStore.get(cid);
+                    Dht.Message.Builder builder = msg.toBuilder();
+                    CborObject.CborMap map = Kad.readMerkleDAGOnly(cid);
+
+                    if(map != null){
+                        builder = builder.setRecord(Dht.Record.newBuilder()
+                                .setKey(msg.getKey())
+                                //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                                .setValue(ByteString.copyFrom(map.toByteArray())));
+                    }else{
+                        builder = builder.setRecord(Dht.Record.newBuilder()
+                                .setKey(msg.getKey())
+                                //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                                .setValue(ByteString.copyFrom("Not Found".getBytes())));
+                    }
+
+                    stream.writeAndFlush(builder.build());
                 break;
             }
             case RESPONSE: {
