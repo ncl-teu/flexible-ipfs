@@ -33,6 +33,27 @@ ant clean
 ~~~
 curl -X POST "http://127.0.0.1:5001/api/v0/id"
 ~~~
+### コンテンツをaddする．
+- 自身のコンテンツをチャンクに分割し，公開用フォルダに複製します．その後，チャンクのCIDに最も近いノードへ各チャンクをputします．
+- コンテンツをチャンクへ分割する
+- 複数のチャンク＋1つのメタデータ(MerkleDAG)が生成される．MerkleDAGには，全チャンクのCIDが書き込まれる．
+- MerkleDAGは，**ipfs.providers**フォルダへ保存される．
+- 全チャンクは，**ipfs.getdata**フォルダへ保存される．
+- まずは，MerkleDAGは，Hash(コンテンツ）のCIDでput先をKademliaで探す．
+- もしHash(コンテンツ)とのXOR距離が最小のものがノードBであれば，MerkleDAGをノードBへPUTする．
+- その後，チャンクごとにPUT先を決めて，非同期でそれぞれPUTする．
+  - 非同期PUT用のスレッド数は**ipfs.chunkputthreads**パラメータで設定可能．
+- **ipfs.providers**にはMerkleDAG**, ipfs.getdata**にはチャンクがPUTされる．
+~~~
+//Addコマンド
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=test.jpg"
+
+//実行結果の出力: 
+{"CID_file":"addしたコンテンツのCID","Addr0":"12D3KooWRwtcPecyqCLkzwwP3xSVo8XtuVDSQMkoi7NJc2sjRTjR: [/ip4/xx.xx.xx.xx/tcp/4001]"}
+
+//Getコマンド:
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/getvalue?cid=addしたコンテンツのCID"
+~~~
 ### コンテンツをputする．
 - PUT対象のデータのCIDを取得し，あとはKademliaに従ってPUT先ノードが決まり，そのノードへ保存させる．
 - putされたコンテンツは，propertiesファイル内で定義されているipfs.datapathのpathへ保存される．
