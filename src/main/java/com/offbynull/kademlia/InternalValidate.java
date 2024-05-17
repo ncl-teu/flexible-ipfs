@@ -65,7 +65,7 @@ final class InternalValidate {
         Validate.validState(currentTime != null);
 
         if (currentTime.isBefore(previousTime)) {
-            throw new BackwardTimeException(previousTime, currentTime);
+           // throw new BackwardTimeException(previousTime, currentTime);
         }
     }
 

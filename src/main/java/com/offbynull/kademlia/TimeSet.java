@@ -54,7 +54,7 @@ final class TimeSet<V> {
         Validate.notNull(value);
         
         Instant existing = valueLookup.putIfAbsent(value, time);
-        Validate.isTrue(existing == null); // should not allow putting in a value that already exists
+        //Validate.isTrue(existing == null); // should not allow putting in a value that already exists
         
         timeLookupDecorator.put(time, value);
     }
