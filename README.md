@@ -80,10 +80,10 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/putattrs?attrname=time&min=08&max
 ~~~
 ### 属性つきコンテンツのPUT
 ~~~
-//文字列をputする場合．valueを値，attrnameは属性名, attrvalueは属性値
-curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?value=testdata&attrname=time&attrvalue=0825"
+//文字列をputする場合．属性の書式は，attrs=KEY_VALUE-KEY_VALUE-....
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?value=xxxx&attrs=time_08-temp_25"
 //ファイルをputする場合．
-curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=ファイルpath&attrname=time&attrvalue=0825"
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=xxxx&attrs=time_08-temp_25"
 ~~~
 ### 1つ以上の属性について，それらの値の範囲指定によるコンテンツ検索
 ~~~
