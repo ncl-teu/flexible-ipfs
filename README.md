@@ -24,6 +24,7 @@ ant clean
 ~~~
 ./upload.sh
 ~~~
+# 実行したい人向け
 - 各ノードで，以下のコマンドでipfsプロセスを開始します．
 ~~~
 ./run.sh & またはrun.batをダブルクリック（windowsの場合)
