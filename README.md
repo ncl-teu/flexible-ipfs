@@ -80,15 +80,20 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/putattrs?attrname=time&min=08&max
 ~~~
 ### 属性つきコンテンツのPUT
 ~~~
+//1属性で文字列をputする場合．属性の書式は，attrs=KEY_VALUE-KEY_VALUE-....
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?value=xxxx&attrs=time_0824"
+//1属性でファイルをputする場合．
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=xxxx&attrs=time_0824"
+
 //文字列をputする場合．属性の書式は，attrs=KEY_VALUE-KEY_VALUE-....
-curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?value=xxxx&attrs=time_08-temp_25"
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?value=xxxx&attrs=time_0824-temp_25"
 //ファイルをputする場合．
-curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=xxxx&attrs=time_08-temp_25"
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=xxxx&attrs=time_0824-temp_25"
 ~~~
 ### 1つ以上の属性について，それらの値の範囲指定によるコンテンツ検索
 ~~~
-//timeが09~10で，かつcidのみを取得する場合（コンテンツそのものが欲しい場合は，cidonly以降を消す．）
-curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_09_10&cidonly=true"
+//timeが08~10で，かつcidのみを取得する場合（コンテンツそのものが欲しい場合は，cidonly以降を消す．）
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10&cidonly=true"
 //timeが08~10で，かつtemp(温度)が25～35である場合で，cidのみを取得する場合（コンテンツそのものが欲しい場合は，cidonly以降を消す．）
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10-temp_25_35&cidonly=true"
 ~~~
