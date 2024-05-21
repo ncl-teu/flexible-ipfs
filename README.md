@@ -46,8 +46,9 @@ curl -X POST "http://127.0.0.1:5001/api/v0/id"
 - **ipfs.providers**にはMerkleDAG**, ipfs.getdata**にはチャンクがPUTされる．
 ~~~
 //Addコマンド
-curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=test.jpg"
-
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxx"
+//属性付きコンテンツのAdd
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxxx&attrs=time_0824"
 //実行結果の出力: 
 {"CID_file":"addしたコンテンツのCID","Addr0":"12D3KooWRwtcPecyqCLkzwwP3xSVo8XtuVDSQMkoi7NJc2sjRTjR: [/ip4/xx.xx.xx.xx/tcp/4001]"}
 
