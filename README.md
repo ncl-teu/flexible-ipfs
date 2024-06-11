@@ -98,9 +98,9 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=xxxx&attrs=
 ### 1つ以上の属性について，それらの値の範囲指定によるコンテンツ検索
 ~~~
 //timeが08~10で，かつcidのみを取得する場合（コンテンツそのものが欲しい場合は，cidonly以降を消す．）
-curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10&cidonly=true"
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10"
 //timeが08~10で，かつtemp(温度)が25～35である場合で，cidのみを取得する場合（コンテンツそのものが欲しい場合は，cidonly以降を消す．）
-curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10-temp_25_35&cidonly=true"
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10-temp_25_35"
 ~~~
 ### ノードが保持するDBのテーブルデータを空にする場合
 - 各ノードは，h2 DBにてメタ情報を管理しています．これらを空にするには以下のコマンドを実行させてください．
