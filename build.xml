@@ -58,7 +58,7 @@
             <exclude name="**/Test*.java" />  -->
         </javac>
     </target>
-    <target name="dist" depends="compile">
+    <target name="dist" depends="compile,build">
         <!--Put everything in ${build} into the MyProject-${DSTAMP}.jar file-->
         <tstamp />
         <jar jarfile="${dist}/gripps-${DSTAMP}.jar" basedir="${build}" />
