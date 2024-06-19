@@ -53,6 +53,10 @@ curl -X POST "http://127.0.0.1:5001/api/v0/id"
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxx"
 //属性付きコンテンツのAdd
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxxx&attrs=time_0824"
+//Tag付きコンテンツのAdd (値を文字列とする場合にtagsを使う）
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxxx&tags=abcs"
+//複数属性と複数Tag付きコンテンツのAdd (値を文字列とする場合にtagsを使う）
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxxx&attrs=time_20240323-temp_34&tags=area_fe43-id_345t"
 //実行結果の出力: 
 {"CID_file":"addしたコンテンツのCID","Addr0":"12D3KooWRwtcPecyqCLkzwwP3xSVo8XtuVDSQMkoi7NJc2sjRTjR: [/ip4/xx.xx.xx.xx/tcp/4001]"}
 
@@ -89,6 +93,8 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/putattrs?attrname=time&min=08&max
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?value=xxxx&attrs=time_0824"
 //1属性でファイルをputする場合．
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=xxxx&attrs=time_0824"
+//複数属性と複数Tagつきコンテンツput
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=xxxx&attrs=time_20240323-temp_34&tags=area_fe43-id_345t"
 
 //文字列をputする場合．属性の書式は，attrs=KEY_VALUE-KEY_VALUE-....
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?value=xxxx&attrs=time_0824-temp_25"
@@ -97,11 +103,19 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/putvaluewithattr?file=xxxx&attrs=
 ~~~
 ### 1つ以上の属性について，それらの値の範囲指定によるコンテンツ検索
 ~~~
-//timeが08~10で，かつcidのみを取得する場合（コンテンツそのものが欲しい場合は，cidonly以降を消す．）
+//timeが08~10で，かつcidのみを取得する場合
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10"
-//timeが08~10で，かつtemp(温度)が25～35である場合で，cidのみを取得する場合（コンテンツそのものが欲しい場合は，cidonly以降を消す．）
+//timeが08~10で，かつtemp(温度)が25～35である場合で，cidのみを取得する場合
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10-temp_25_35"
 ~~~
+### 1つ以上のTagについて，Tag値によるコンテンツ検索
+~~~
+//tag名前をareaで，値を指定して取得する場合
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?tags=area_a23fa"
+//複数属性範囲と複数タグでの取得
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10-temp_25_35&tags=area_a23fa-id_234fs"
+~~~
+
 ### ノードが保持するDBのテーブルデータを空にする場合
 - 各ノードは，h2 DBにてメタ情報を管理しています．これらを空にするには以下のコマンドを実行させてください．
 ~~~
