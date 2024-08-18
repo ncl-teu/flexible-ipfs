@@ -116,6 +116,65 @@ public interface KademliaController {
         return putValue(peerId, ipnsEntry);
     }
 
+
+    default CompletableFuture<Boolean> putAttrInfo(byte[] rawData, boolean isProviderAddress, String pathToPublish, LocalDateTime expiry, long sequence,
+                                                          long ttlNanos, Multihash peerId, PrivKey ourKey, PeerAddresses addr, String cid) {
+
+        //ipnsEntry (byte[])から，getDataして，さらに，そこからmapでRawDataのキーで取ってくることができれば良い．
+        byte[] cborEntryData = IPNS.createCborDataForIpnsEntryForAttr(rawData,addr, true, pathToPublish, expiry,
+                Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttlNanos, cid);
+        String expiryString = IPNS.formatExpiry(expiry);
+        byte[] signature = ourKey.sign(IPNS.createSigV2Data(cborEntryData));
+        PubKey pubKey = ourKey.publicKey();
+        byte[] pubKeyProtobuf = Crypto.PublicKey.newBuilder()
+                .setType(pubKey.getKeyType())
+                .setData(ByteString.copyFrom(pubKey.raw()))
+                .build()
+                .toByteArray();
+        byte[] ipnsEntry = Ipns.IpnsEntry.newBuilder()
+                .setSequence(sequence)
+                .setTtl(ttlNanos)
+                .setValue(ByteString.copyFrom(pathToPublish.getBytes()))
+                .setValidityType(Ipns.IpnsEntry.ValidityType.EOL)
+                .setValidity(ByteString.copyFrom(expiryString.getBytes()))
+                .setData(ByteString.copyFrom(cborEntryData))
+                .setSignatureV2(ByteString.copyFrom(signature))
+                .setPubKey(ByteString.copyFrom(pubKeyProtobuf)) // not needed with Ed25519
+                .build().toByteArray();
+
+        return putValue(peerId, ipnsEntry);
+    }
+
+    default CompletableFuture<Boolean> putTagInfo(String key, String value, String tagInfo, String tagCid,String pathToPublish, LocalDateTime expiry, long sequence,
+                                                   long ttlNanos, Multihash peerId, PrivKey ourKey, PeerAddresses addr, String cid) {
+
+        //ipnsEntry (byte[])から，getDataして，さらに，そこからmapでRawDataのキーで取ってくることができれば良い．
+        byte[] cborEntryData = IPNS.createCborDataForIpnsEntryForTag(key, value, tagInfo, tagCid,addr,  pathToPublish, expiry,
+                Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttlNanos, cid);
+        String expiryString = IPNS.formatExpiry(expiry);
+        byte[] signature = ourKey.sign(IPNS.createSigV2Data(cborEntryData));
+        PubKey pubKey = ourKey.publicKey();
+        byte[] pubKeyProtobuf = Crypto.PublicKey.newBuilder()
+                .setType(pubKey.getKeyType())
+                .setData(ByteString.copyFrom(pubKey.raw()))
+                .build()
+                .toByteArray();
+        byte[] ipnsEntry = Ipns.IpnsEntry.newBuilder()
+                .setSequence(sequence)
+                .setTtl(ttlNanos)
+                .setValue(ByteString.copyFrom(pathToPublish.getBytes()))
+                .setValidityType(Ipns.IpnsEntry.ValidityType.EOL)
+                .setValidity(ByteString.copyFrom(expiryString.getBytes()))
+                .setData(ByteString.copyFrom(cborEntryData))
+                .setSignatureV2(ByteString.copyFrom(signature))
+                .setPubKey(ByteString.copyFrom(pubKeyProtobuf)) // not needed with Ed25519
+                .build().toByteArray();
+
+        return putValue(peerId, ipnsEntry);
+    }
+
+
+
     default CompletableFuture<Boolean> putProviderAddress(byte[] rawData, boolean isProviderAddress, String pathToPublish, LocalDateTime expiry, long sequence,
                                                long ttlNanos, Multihash peerId, PrivKey ourKey, PeerAddresses addr) {
 
@@ -145,12 +204,12 @@ public interface KademliaController {
     }
 
 
-    default CompletableFuture<Boolean> putValueWithAttr(byte[] rawData, List<HashMap<String,String>> attrList, String pathToPublish, LocalDateTime expiry, long sequence,
-                                               long ttlNanos, Multihash peerId, PrivKey ourKey) {
+    default CompletableFuture<Boolean> putValueWithAttr( List<HashMap<String,String>> attrList, List<HashMap<String, String>> tagList, LinkedList<Cid> cidList, String pathToPublish, LocalDateTime expiry, long sequence,
+                                               long ttlNanos, Multihash peerId, PrivKey ourKey, String ex) {
 
         //ipnsEntry (byte[])から，getDataして，さらに，そこからmapでRawDataのキーで取ってくることができれば良い．
-        byte[] cborEntryData = IPNS.createCborDataForIpnsEntry(rawData, attrList, pathToPublish, expiry,
-                Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttlNanos);
+        byte[] cborEntryData = IPNS.createCborDataForIpnsEntryForAttrPut( attrList, tagList, cidList, pathToPublish, expiry,
+                Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttlNanos, ex);
         String expiryString = IPNS.formatExpiry(expiry);
         byte[] signature = ourKey.sign(IPNS.createSigV2Data(cborEntryData));
         PubKey pubKey = ourKey.publicKey();
@@ -170,16 +229,17 @@ public interface KademliaController {
                 .setPubKey(ByteString.copyFrom(pubKeyProtobuf)) // not needed with Ed25519
                 .build().toByteArray();
 
-        return putValue(peerId, ipnsEntry);
+        //return putValue(peerId, ipnsEntry);
+        return putMerkleDAG(peerId, ipnsEntry);
     }
 
 
     default CompletableFuture<Boolean> putValueForAdd(byte[] rawData, LinkedList<Cid> cidList, String pathToPublish, LocalDateTime expiry, long sequence,
-                                                      long ttlNanos, Multihash peerId, PrivKey ourKey) {
+                                                      long ttlNanos, Multihash peerId, PrivKey ourKey, String ex) {
 
         //ipnsEntry (byte[])から，getDataして，さらに，そこからmapでRawDataのキーで取ってくることができれば良い．
         byte[] cborEntryData = IPNS.createCborDataForIpnsEntryForAdd(rawData, pathToPublish, expiry,
-                Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttlNanos, cidList);
+                Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttlNanos, cidList, ex);
         String expiryString = IPNS.formatExpiry(expiry);
         byte[] signature = ourKey.sign(IPNS.createSigV2Data(cborEntryData));
         PubKey pubKey = ourKey.publicKey();
@@ -386,6 +446,27 @@ public interface KademliaController {
         return rpc(outgoing).thenApply(GetResult::getRecord);
     }
 
+    /**
+     * 属性の担当ノードかどうかを尋ねるメソッド
+     * @param mask
+     * @return
+     */
+    default CompletableFuture<Dht.Record> askInCharge(String mask){
+        Dht.Message outgoing = Dht.Message.newBuilder()
+                .setType(Dht.Message.MessageType.INCHARGE)
+                .setKey(ByteString.copyFrom(mask.getBytes()))
+                .build();
+        return rpc(outgoing).thenApply(GetResult::getRecord);
+    }
+
+    default CompletableFuture<Dht.Record> findMgr(String mask){
+        Dht.Message outgoing = Dht.Message.newBuilder()
+                .setType(Dht.Message.MessageType.FIND_MGR)
+                .setKey(ByteString.copyFrom(mask.getBytes()))
+                .build();
+        return rpc(outgoing).thenApply(GetResult::getRecord);
+    }
+
 
     default CompletableFuture<Dht.Record> getMerkleDAG(String cid){
         //byte[] ipnsRecordKey = IPNS.getKey(peerId);
@@ -400,6 +481,56 @@ public interface KademliaController {
         // return rpc(outgoing).thenApply(IpnsRecord::fromProtobuf);
     }
 
+
+    /**
+     * 属性値の開始位置としてのcid (例: cid(time^08))を指定する．
+     * さらに，範囲検索であるというフラグを立てる．
+     * さらに，値の範囲を指定できる必要がある．
+     * @param pathToPublish
+     * @return
+     */
+    default CompletableFuture<Dht.Record> getValueByAttrMask(HashMap<String, Cborable> mapMap, String pathToPublish, String attrName, String attrCurrent, String attrMax, LocalDateTime expiry, long sequence,
+                                                         long ttlNanos, Multihash peerId, PrivKey ourKey, boolean isCidOnly){
+        //ipnsEntry (byte[])から，getDataして，さらに，そこからmapでRawDataのキーで取ってくることができれば良い．
+        byte[] cborEntryData = IPNS.createCborDataForIpnsEntryForTransfer(mapMap, pathToPublish, expiry,
+                Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttlNanos, attrName, attrCurrent, attrMax, isCidOnly);
+        String expiryString = IPNS.formatExpiry(expiry);
+        byte[] signature = ourKey.sign(IPNS.createSigV2Data(cborEntryData));
+        PubKey pubKey = ourKey.publicKey();
+        byte[] pubKeyProtobuf = Crypto.PublicKey.newBuilder()
+                .setType(pubKey.getKeyType())
+                .setData(ByteString.copyFrom(pubKey.raw()))
+                .build()
+                .toByteArray();
+        byte[] ipnsEntry = Ipns.IpnsEntry.newBuilder()
+                .setSequence(sequence)
+                .setTtl(ttlNanos)
+                .setValue(ByteString.copyFrom(pathToPublish.getBytes()))
+                .setValidityType(Ipns.IpnsEntry.ValidityType.EOL)
+                .setValidity(ByteString.copyFrom(expiryString.getBytes()))
+                .setData(ByteString.copyFrom(cborEntryData))
+                .setSignatureV2(ByteString.copyFrom(signature))
+                .setPubKey(ByteString.copyFrom(pubKeyProtobuf)) // not needed with Ed25519
+                .build().toByteArray();
+//
+        //   return putValue(peerId, ipnsEntry);
+        byte[] ipnsRecordKey = IPNS.getKey(peerId);
+
+        //byte[] ipnsRecordKey = IPNS.getKey(peerId);
+        Dht.Message outgoing = Dht.Message.newBuilder()
+                .setType(Dht.Message.MessageType.GET_VALUE_WITH_ATTRS)
+                .setKey(ByteString.copyFrom(ipnsRecordKey))
+                .setRecord(Dht.Record.newBuilder()
+                        .setKey(ByteString.copyFrom(ipnsRecordKey))
+                        .setValue(ByteString.copyFrom(ipnsEntry))
+                        .build())
+                .build();
+        return rpc(outgoing).thenApply(GetResult::getRecord);
+        // return rpc(outgoing).thenApply(GetResult::fromProtobuf);
+        //return rpc(outgoing).thenApply(reply -> reply.getRecord().getValue().toByteArray());
+        // return rpc(outgoing).thenApply(reply->reply.getRecord())
+        // return rpc(outgoing).thenApply(IpnsRecord::fromProtobuf);
+    }
 
     /**
      * 属性値の開始位置としてのcid (例: cid(time^08))を指定する．
@@ -451,6 +582,111 @@ public interface KademliaController {
         // return rpc(outgoing).thenApply(IpnsRecord::fromProtobuf);
     }
 
+    default CompletableFuture<Dht.Record> getCidByTags(String pathToPublish, String tagName, String tagValue,
+                                                       LocalDateTime expiry, long sequence,
+                                                         long ttlNanos, Multihash tagCid, PrivKey ourKey){
+        //ipnsEntry (byte[])から，getDataして，さらに，そこからmapでRawDataのキーで取ってくることができれば良い．
+        byte[] cborEntryData = IPNS.createCborDataForIpnsEntryForTagRequest(tagCid.toString(),pathToPublish, expiry,
+                Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttlNanos);
+        String expiryString = IPNS.formatExpiry(expiry);
+        byte[] signature = ourKey.sign(IPNS.createSigV2Data(cborEntryData));
+        PubKey pubKey = ourKey.publicKey();
+        byte[] pubKeyProtobuf = Crypto.PublicKey.newBuilder()
+                .setType(pubKey.getKeyType())
+                .setData(ByteString.copyFrom(pubKey.raw()))
+                .build()
+                .toByteArray();
+        byte[] ipnsEntry = Ipns.IpnsEntry.newBuilder()
+                .setSequence(sequence)
+                .setTtl(ttlNanos)
+                .setValue(ByteString.copyFrom(pathToPublish.getBytes()))
+                .setValidityType(Ipns.IpnsEntry.ValidityType.EOL)
+                .setValidity(ByteString.copyFrom(expiryString.getBytes()))
+                .setData(ByteString.copyFrom(cborEntryData))
+                .setSignatureV2(ByteString.copyFrom(signature))
+                .setPubKey(ByteString.copyFrom(pubKeyProtobuf)) // not needed with Ed25519
+                .build().toByteArray();
+//
+        //   return putValue(peerId, ipnsEntry);
+        byte[] ipnsRecordKey = IPNS.getKey(tagCid);
+
+        //byte[] ipnsRecordKey = IPNS.getKey(peerId);
+        Dht.Message outgoing = Dht.Message.newBuilder()
+                .setType(Dht.Message.MessageType.GET_CID_WITH_TAGS)
+                .setKey(ByteString.copyFrom(ipnsRecordKey))
+                .setRecord(Dht.Record.newBuilder()
+                        .setKey(ByteString.copyFrom(ipnsRecordKey))
+                        .setValue(ByteString.copyFrom(ipnsEntry))
+                        .build())
+                .build();
+        return rpc(outgoing).thenApply(GetResult::getRecord);
+
+    }
+
+
+    default CompletableFuture<Boolean> registerMgr(SortedMap<String, Cborable> state, /*String pathToPublish, */
+                                                   LocalDateTime expiry, long sequence,
+                                                   long ttlNanos, Multihash peerId, PrivKey ourKey){
+
+        //ipnsEntry (byte[])から，getDataして，さらに，そこからmapでRawDataのキーで取ってくることができれば良い．
+        byte[] cborEntryData = CborObject.CborMap.build(state).serialize();
+
+        String expiryString = IPNS.formatExpiry(expiry);
+        byte[] signature = ourKey.sign(IPNS.createSigV2Data(cborEntryData));
+        PubKey pubKey = ourKey.publicKey();
+        byte[] pubKeyProtobuf = Crypto.PublicKey.newBuilder()
+                .setType(pubKey.getKeyType())
+                .setData(ByteString.copyFrom(pubKey.raw()))
+                .build()
+                .toByteArray();
+        byte[] ipnsEntry = Ipns.IpnsEntry.newBuilder()
+                .setSequence(sequence)
+                .setTtl(ttlNanos)
+                //.setValue(ByteString.copyFrom(pathToPublish.getBytes()))
+                .setValidityType(Ipns.IpnsEntry.ValidityType.EOL)
+                .setValidity(ByteString.copyFrom(expiryString.getBytes()))
+                .setData(ByteString.copyFrom(cborEntryData))
+                .setSignatureV2(ByteString.copyFrom(signature))
+                .setPubKey(ByteString.copyFrom(pubKeyProtobuf)) // not needed with Ed25519
+                .build().toByteArray();
+        byte[] hash = new byte[32];
+        new Random().nextBytes(hash);
+        Multihash randomPeerId = new Multihash(Multihash.Type.sha2_256, hash);
+        byte[] ipnsRecordKey = IPNS.getKey(randomPeerId);
+        Dht.Message outgoing = Dht.Message.newBuilder()
+                .setType(Dht.Message.MessageType.REGISTER_MGR)
+                .setKey(ByteString.copyFrom(ipnsRecordKey))
+                .setRecord(Dht.Record.newBuilder()
+                        .setKey(ByteString.copyFrom(ipnsRecordKey))
+                        .setValue(ByteString.copyFrom(ipnsEntry))
+                        .build())
+                .build();
+
+
+        /*byte[] cborEntryData = CborObject.CborMap.build(state).serialize();
+
+        byte[] hash = new byte[32];
+        new Random().nextBytes(hash);
+        Multihash randomPeerId = new Multihash(Multihash.Type.sha2_256, hash);
+            byte[] ipnsRecordKey = IPNS.getKey(randomPeerId);
+            Dht.Message outgoing = Dht.Message.newBuilder()
+                    .setType(Dht.Message.MessageType.REGISTER_MGR)
+                    //.setKey(ByteString.copyFrom(ipnsRecordKey))
+                    .setRecord(Dht.Record.newBuilder()
+                            //.setKey(ByteString.copyFrom(ipnsRecordKey))
+                            .setValue(ByteString.copyFrom(cborEntryData))
+                            .build())
+                    .build();
+
+         */
+      // return rpc(outgoing).thenApply(GetResult::getRecord);
+
+
+           return rpc(outgoing).thenApply(reply -> reply.getKey().equals(outgoing.getKey()) &&
+                    reply.getRecord().getValue().equals(outgoing.getRecord().getValue()));
+
+
+        }
 
     /**
      * 担当ノード -> Leafへのデータ取得
@@ -475,18 +711,20 @@ public interface KademliaController {
 
        Iterator<AttrBean> bIte = map.values().iterator();
 
-       while(bIte.hasNext()){
+     /*  while(bIte.hasNext()){
            AttrBean bean = bIte.next();
-           Map<String, Cborable> reqMap = IPNS.createCborMapForAttr(bean.getPeerId(), bean.getCid(), bean.getAttrMask(), bean.getAddr());
+           //Map<String, Cborable> reqMap = IPNS.createCborMapForAttr(bean.getPeerId(), bean.getCid(), bean.getAttrMask(), bean.getAddr());
+           //byte[] reqMap = IPNS.createCborMapForAttr(bean.getPeerId(), bean.getCid(), bean.getAttrMask(), bean.getAddr());
            globalReqMap.put(bean.getCid(), CborObject.CborMap.build(reqMap));
 
-       }
-       globalReqMap.put("cidonly", new CborObject.CborBoolean(isCidOnly));
+       }*/
+      // globalReqMap.put("cidonly", new CborObject.CborBoolean(isCidOnly));
         //return CborObject.CborMap.build(state).serialize();
 
 
 
-        byte[] cborEntryData = CborObject.CborMap.build(globalReqMap).serialize();
+       // byte[] cborEntryData = CborObject.CborMap.build(globalReqMap).serialize();
+        byte[] cborEntryData = IPNS.createCborMapForAttr(isCidOnly, map);
         String expiryString = IPNS.formatExpiry(expiry);
         byte[] signature = ourKey.sign(IPNS.createSigV2Data(cborEntryData));
         PubKey pubKey = ourKey.publicKey();
@@ -519,10 +757,6 @@ public interface KademliaController {
                         .build())
                 .build();
         return rpc(outgoing).thenApply(GetResult::getRecord);
-        // return rpc(outgoing).thenApply(GetResult::fromProtobuf);
-        //return rpc(outgoing).thenApply(reply -> reply.getRecord().getValue().toByteArray());
-        // return rpc(outgoing).thenApply(reply->reply.getRecord())
-        // return rpc(outgoing).thenApply(IpnsRecord::fromProtobuf);
     }
 
 

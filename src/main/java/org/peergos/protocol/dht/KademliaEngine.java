@@ -44,33 +44,29 @@ public class KademliaEngine {
     public void addOutgoingConnection(PeerId peer, Multiaddr addr) {
 
         if (Kad.getIns().isPeerExist(peer, addr)) {
-            router.touch(Instant.now(), new Node(Id.create(Hash.sha256(peer.getBytes()), 256), peer.toString()));
             addressBook.addAddrs(peer, 0, addr);
-        }
-     /*   boolean ret = Kad.getIns().checkPeer(peer, addr);
-        if(ret){
+            router.touch(Instant.now(), new Node(Id.create(Hash.sha256(peer.getBytes()), 256), peer.toString()));
 
-        }else{
-            RamAddressBook ram = (RamAddressBook) addressBook;
-            ram.removePeer(peer);
         }
-*/
+
 
     }
 
     public void addIncomingConnection(PeerId peer, Multiaddr addr) {
         if (Kad.getIns().isPeerExist(peer, addr)) {
-            router.touch(Instant.now(), new Node(Id.create(Hash.sha256(peer.getBytes()), 256), peer.toString()));
             addressBook.addAddrs(peer, 0, addr);
+            router.touch(Instant.now(), new Node(Id.create(Hash.sha256(peer.getBytes()), 256), peer.toString()));
+
 
         }
 
     }
 
     public List<PeerAddresses> getKClosestPeers(byte[] key) {
-        int k = 20;
+        int k = Kad.k;
         List<Node> nodes = router.find(Id.create(Hash.sha256(key), 256), k, false);
         System.out.println("Nodes: " + nodes.size());
+
         return nodes.stream()
                 .map(n -> {
                     List<MultiAddress> addrs = addressBook.getAddrs(PeerId.fromBase58(n.getLink())).join()
@@ -84,27 +80,37 @@ public class KademliaEngine {
 
     /**
      * 担当ノードが要求受信した後，Leaf(自分or他ノード)へリクエスト＋受信するメソッド
-     * @param msg
-     * @param attrName
-     * @param attrCurrent
-     * @param attrMax
+     * @param attrName 属性名
+     * @param attrCurrent 最小値（現状値）
+     * @param attrMax 最大値
      * @return <CID, CborMapのデータ>
      **/
-    public HashMap<String, Cborable> processAttrTransfer(Dht.Message msg,
-                                                         Stream stream,
-                                                         String attrName,
-                                                         String attrCurrent,
-                                                         String attrMax,
-                                                         boolean isCidOnly){
+    public HashMap<String, Cborable> processAttrTransfer(HashMap<String, Cborable> mapMap,
+                                                                      String attrName,
+                                                                      String attrCurrent,
+                                                                      String attrMax,
+                                                                      boolean isCidOnly){
+        //属性名^現状値　を生成
         String attrInfo = Kad.genAttrMask(attrName, attrCurrent);
+       // System.out.println("*****"+attrInfo+"*****");
+
         String attrInfoMax = Kad.genAttrMask(attrName, attrMax);
         //DBから，time^08をキーにして，DBから文字列 (time^08)とaddr, cid を取得する．
         //そして，dialPeerでaddrとcidを渡して情報を検索する．
         //<PeerID, <CID, bean(attrmask, addr)>
         //指定の属性情報で，Leafノードを検索する．
-        HashMap<String, HashMap<String, AttrBean>> attrMap = Kad.getIns().getStore().getAttrLink(attrInfo);
-        CborObject.CborMap map = null;
+        //<CID(time^08>, Map<コンテンツCID, bean>>という形式．
+        //HashMap<String, HashMap<String, AttrBean>> attrMap = Kad.java.getIns().getStore().getAttrLink(attrInfo);
 
+        //<コンテンツCID, Bean>のリストを取得．
+
+        LinkedList<AttrBean> attrList = Kad.getIns().getStore().getAttrLink(attrInfo);
+        //もしなければ，ここで打ち止め
+        if(attrList.isEmpty()){
+            //return null;
+        }else{
+        }
+        CborObject.CborMap map = null;
         //あとは，peerIdごとに問い合わせるためのループ
         //HashMap<CID, Cbor>
 
@@ -113,97 +119,27 @@ public class KademliaEngine {
         //hashに近い指定数ピアを取得する．
         List<IpnsRecord> candidates = new ArrayList<>();
         List< CborObject.CborMap> mapList = new ArrayList<CborObject.CborMap>();
-        HashMap<String, Cborable> mapMap = new HashMap<String, Cborable>();
+        //HashMap<String, Cborable> mapMap = new HashMap<String, Cborable>();
         long ttl = 1 * 3600_000_000_000L;
 
         LocalDateTime expiry = LocalDateTime.now().plusHours(1);
 
-        Iterator<String> pIte = attrMap.keySet().iterator();
+        //CID(time^val)たち
+        //Iterator<String> pIte = attrMap.keySet().iterator();
+        Iterator<AttrBean> pIte = attrList.iterator();
         HashSet<String> getSet = new HashSet<String>();
 
         HashMap<String, byte[]> retMap = new HashMap<String, byte[]>();
-        //ピアごとのループ
-        //各Leafノードに対するループ
+        //<CID, bean>のループ
         while(pIte.hasNext()){
-            String pID = pIte.next();
-            //<cid, bean>のMap
-            HashMap<String, AttrBean> bMap = attrMap.get(pID);
-            AttrBean sampleBean = bMap.values().iterator().next();
-            String strAddr = sampleBean.getAddr();
+            AttrBean bean = pIte.next();
+            //CIDを取得．
+            String contentCID = bean.getAddr();
+            mapMap.put(contentCID, new CborObject.CborString(contentCID));
 
-            PeerAddresses addrs = Kad.genPeerAddresses(strAddr);
-            Host us = Kad.getIns().node;
-            String sampleCid = sampleBean.getCid();
-
-            Multihash node1Id = Multihash.deserialize(us.getPeerId().getBytes());
-            //ノード(自・他）から，複数のcidに対応したmapを取得する．
-            //recursiveで行うほうが負荷分散となる．
-            //担当Aでのmap集合を取得→sucを見て，担当Bへ問い合わせる．担当Bは，
-            //map集合取得→sucを見る．もしcurrent == maxであれば，map取得で修了．
-            //そして，writeAndFlushする．
-            //同期処理となる．
-            //
-            //Leafが自ノードであれば，ローカルから取得する．
-            if(addrs.peerId.toString().equals(node1Id.toString())){
-                Iterator<String> cIte = bMap.keySet().iterator();
-                while(cIte.hasNext()){
-                    String icid = cIte.next();
-                    if(getSet.contains(icid)){
-                        continue;
-                    }
-                    //byte[] content = Kad.getDataFromMerkleDAG(icid);
-                    // CborObject cbor2 = CborObject.fromByteArray(content);
-                    // map =  (CborObject.CborMap) cbor2;
-                    CborObject.CborMap myMap = Kad.readMerkleDAG(icid);
-                    if(myMap == null){
-                        return null;
-                    }
-
-                    //もしcidonlyフラグが立っていれば，この時点で削除する．
-                    if(isCidOnly){
-                        myMap.put("RawData", new CborObject.CborString(null));
-
-                    }
-                    myMap.put("cid", new CborObject.CborString(icid));
-                    //CborMapに，<cid,cborMap>で格納する．
-                    mapMap.put(icid, myMap);
-                    getSet.add(icid);
-
-                    //mapList.add(map);
-
-
-                }
-            }else{
-                //Leafが他ノードの場合
-                Cid idCid = Kad.genCid(sampleCid);
-                ///他ノードにお願いする場合の処理
-                //同一ピアに複数のcidが入っているかもしれないので，それをまとめて問い合わせる．
-                //とりあえず最初のもののcidを設定しておく．
-                //戻り値はリストを含んだRecord．(CborMapのリスト)
-                CborObject.CborList attrList = null;
-
-                Dht.Record res = Kad.getIns().getKadDHT().dialPeer(addrs, us).orTimeout(5, TimeUnit.SECONDS).join().
-                        getValueByAttrMask("/ipfs/" + sampleCid,bMap, attrInfo, expiry, sequence,
-                                ttl, idCid, us.getPrivKey(), isCidOnly).join();
-                ByteString bs = res.getValue();
-                CborObject cbor_res = CborObject.fromByteArray(bs.toByteArray());
-                //CborMapのリストを取得する．
-                attrList = (CborObject.CborList)cbor_res;
-
-
-                //Merkle DAGのリストが帰ってくる．
-
-                Iterator<CborObject.CborMap> ite = (Iterator<CborObject.CborMap>) attrList.value.iterator();
-                while(ite.hasNext()){
-                    CborObject.CborMap m = ite.next();
-                    String tmpCid = ((CborObject.CborString)m.get("cid")).value;
-                    mapMap.put(tmpCid, m);
-
-                }
-
-            }
 
         }
+
         if(attrCurrent.equals(attrMax)){
             //この時点でmax値であれば，ここで打ち止め．
             //集約したデータを返す．
@@ -211,35 +147,55 @@ public class KademliaEngine {
         }else{
             //Sucとなる担当ノードのエンドポイントを取得する．
             int nextVal = Integer.valueOf(attrCurrent).intValue() + 1;
-            //String nextAttr = Kad.genAttrMask(attrName, nextVal);
-            String nextAttr = Kad.genNormalizedValue(nextVal);
+            //String nextAttr = Kad.java.genAttrMask(attrName, nextVal);
+           // String nextAttr = Kad.java.genNormalizedValue(nextVal);
+            String nextAttr = Kad.genNormalizedValue(attrName, nextVal);
             HashMap<String ,String> sucMap = Kad.getIns().getStore().getSuc(attrInfo);
             String sucPeerAddress = sucMap.get("suc");
             if(sucPeerAddress == null){
                 //レコードが無い場合は，無視
+                //他のピアへ転送する．
+
             }else{
                 String succid = sucMap.get("cid");
                 PeerAddresses sucAddr = Kad.genPeerAddresses(sucPeerAddress);
                 //DBから，SUCの担当ノードを特定する．
                 //SUCの担当ノードが，また自分かどうかのチェックが必要．
-
                 if(Kad.isOwnHost(sucAddr)){
                     //sucAddr, 属性名，属性情報, 最大値が必要
                     //GET_VALUE_WITH_ATTRSのメッセージをもって呼び出す．
-                    HashMap<String, Cborable> recursiveMap = this.processAttrTransfer(msg, stream, attrName, nextAttr, attrMax, isCidOnly);
-                    mapMap.putAll(recursiveMap);
+                    HashMap<String, Cborable> recursiveMap = this.processAttrTransfer(mapMap, attrName, nextAttr, attrMax, isCidOnly);
+                    if(recursiveMap.isEmpty()){
+
+                    }else{
+                        Iterator<String> keyIte = recursiveMap.keySet().iterator();
+
+                        mapMap.putAll(recursiveMap);
+                    }
+
 
                 }else{
                     try{
+
                         //SUCが他ノードであれば，リクエストを転送する．
                         CompletableFuture<List<CborObject.CborMap>> retList2 = Kad.getIns().getKadDHT().
-                                getValueByAttrs2(Kad.genCid(succid), sucAddr, attrName, nextAttr, attrMax, Kad.getIns().node, isCidOnly);
+                                getValueByAttrs2(mapMap, Kad.genCid(succid), sucAddr, attrName, nextAttr, attrMax, Kad.getIns().node, isCidOnly);
                         List<CborObject.CborMap> mList = retList2.get();
                         Iterator<CborObject.CborMap> mIte = mList.iterator();
+
+
                         while(mIte.hasNext()){
                             CborObject.CborMap m = mIte.next();
-                            String ccid = ((CborObject.CborString)m.get("cid")).value;
-                            mapMap.put(ccid, m);
+                            /*if(m.containsKey("cid")){
+                                String ccid = ((CborObject.CborString)m.get("cid")).value;
+                                mapMap.put(ccid, new CborObject.CborString(ccid));
+                            }
+                        */
+                            Iterator<String> keyIte = m.keySet().iterator();
+                            while(keyIte.hasNext()){
+                                String key = keyIte.next();
+                                mapMap.put(key, m.get(key));
+                            }
                         }
                     }catch(Exception e){
                         e.printStackTrace();
@@ -248,12 +204,9 @@ public class KademliaEngine {
                 }
 
             }
-
-
         }
 
         return mapMap;
-
 
 }
 
@@ -277,7 +230,6 @@ public class KademliaEngine {
                         String path_cid = new String(b_str.toByteArray());
                         String cid = path_cid.replace("/ipfs/", "");
                         CborObject cbor = CborObject.fromByteArray(entry.getData().toByteArray());
-                        //if (! (cbor instanceof CborObject.CborMap))
                         CborObject.CborMap map = (CborObject.CborMap) cbor;
 
                         //MerkleDAGとしてファイルに書き出す．
@@ -289,11 +241,9 @@ public class KademliaEngine {
                             //ファイルとして属性を保存する．
                             Kad.writeMerkleDAG(cid, map);
                             String val = null;
-
-                                CborObject.CborByteArray valarray = (CborObject.CborByteArray)map.get("RawData");
-                                if(valarray != null)
-                                 val = new String(valarray.value);
-
+                            CborObject.CborByteArray valarray = (CborObject.CborByteArray)map.get("RawData");
+                            if(valarray != null)
+                             val = new String(valarray.value);
 
                             String predBytes = null;
                             String sucBytes = null;
@@ -309,22 +259,48 @@ public class KademliaEngine {
                             //もし属性putモードであれば，DBを見る．
                             Kad.getIns().getStore().putPredSuc(cid, val, predBytes, sucBytes);
 
-                        }else if(map.containsKey("isproviderput")){
+                        //isprovierputは使わなくなった．
+                        }else if(map.containsKey("isproviderput")) {
                             //プロバイダのアドレス情報PUTの場合，DBへ登録する．
                             //属性情報を取得する（例: time^08)
-                            CborObject.CborByteArray valarray = (CborObject.CborByteArray)map.get("RawData");
+                            CborObject.CborByteArray valarray = (CborObject.CborByteArray) map.get("RawData");
                             String val = new String(valarray.value);
 
                             CborObject.CborString addr = (CborObject.CborString) map.get("addr");
+                            Kad.getIns().getStore().putAttrLink(cid, val, addr.value);
+                        //こちらが本来の方式．CIDを担当ノードの属性のところへ登録する．
+                        }else if(map.containsKey("isprovidercidput")){
+                            CborObject.CborByteArray valarray = (CborObject.CborByteArray) map.get("RawData");
+                            String val = new String(valarray.value);
+                            CborObject.CborString attr_content_cid_cbor = (CborObject.CborString) map.get("cid");
+                            //CborObject.CborString addr = (CborObject.CborString) map.get("addr");
 
                             //Multihash, MultiAddressのリストの形式
                             //12D3KooWA5pL6SFauCsKqJK7J8dzXSUGqNbSQLNQ7PkaDihvv1ZG: [/ip4/60.112.207.90/tcp/52456, /ip4/60.112.207.90/tcp/52692]
                             //String bAddr = new String(addr.value);
-                            //PeerAddresses pAddr = Kad.genPeerAddresses(bAddr);
+                            //PeerAddresses pAddr = Kad.java.genPeerAddresses(bAddr);
                             //val (time^08), pAddr.toString()を登録する．
                             //cid(time^08), time^08, prividerのaddr
-                            Kad.getIns().getStore().putAttrLink(cid, val, addr.value);
+                            Kad.getIns().getStore().putAttrLink(cid, val, attr_content_cid_cbor.value);
 
+                        }else if(map.containsKey("istagput")){
+                            //Tagのputの場合の処理
+                            CborObject.CborString ctagcid = (CborObject.CborString) map.get("tagcid");
+                            String tagCid = ctagcid.value;
+
+                            CborObject.CborString attr_content_cid_cbor = (CborObject.CborString) map.get("cid");
+                            String content_cid = attr_content_cid_cbor.value;
+
+                            CborObject.CborString ctagName = (CborObject.CborString)map.get("tagname");
+                            String tagName = ctagName.value;
+
+                            CborObject.CborString ctagValue = (CborObject.CborString)map.get("tagvalue");
+                            String tagValue = ctagValue.value;
+
+                            CborObject.CborString ctagInfo = (CborObject.CborString) map.get("taginfo");
+                            String tagInfo = ctagInfo.value;
+                            //Tag情報をDBに登録する．
+                            Kad.getIns().getStore().putTagInfo(tagCid, tagInfo, tagName, tagValue, content_cid);
 
                         }else{
                             //通常のコンテンツPUTの場合，ファイル保存する．
@@ -337,7 +313,6 @@ public class KademliaEngine {
                             }
                         }
 
-
                     }catch(Exception e){
                         e.printStackTrace();
                     }
@@ -348,6 +323,43 @@ public class KademliaEngine {
                 break;
             }
 
+            case GET_CID_WITH_TAGS:
+            {
+                Optional<IpnsMapping> mapping = IPNS.validateIpnsEntry(msg);
+                if (mapping != null) {
+                    try {
+
+                        HashMap<String, Cborable> mapMap = new HashMap<String, Cborable>();
+                        //ipnsStore.put(mapping.get().publisher, mapping.get().value);
+                        //cborに格納されている各種値を取得する．
+                        Ipns.IpnsEntry entry = Ipns.IpnsEntry.parseFrom(msg.getRecord().getValue());
+                        CborObject cbor = CborObject.fromByteArray(entry.getData().toByteArray());
+                        CborObject.CborMap map = (CborObject.CborMap) cbor;
+                        CborObject.CborString cbortagCid = (CborObject.CborString) map.get("tagcid");
+                        String tagCid = cbortagCid.value;
+                        HashSet<String> tags = Kad.getIns().getStore().getTagInfo(tagCid);
+                        Iterator<String> tagIte = tags.iterator();
+                        while(tagIte.hasNext()){
+                            String str = tagIte.next();
+                            mapMap.put(str, new CborObject.CborString(str));
+                        }
+                        //HashMap<String, Cborable> allMap = Kad.java.getIns().getKadDHT().getAttrInfoAgain(mapMap, source, attrCid, attrName, attrCurrent, attrMax, us);
+
+                        byte[] retData = CborObject.CborMap.build(mapMap).serialize();
+                        Dht.Message.Builder builder = msg.toBuilder();
+                        builder = builder.setRecord(Dht.Record.newBuilder()
+                                .setKey(msg.getKey())
+                                //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                                .setValue(ByteString.copyFrom(retData)));
+                        stream.writeAndFlush(builder.build());
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                break;
+            }
 
             case PUT_MERKLEDAG:
             {
@@ -381,8 +393,9 @@ public class KademliaEngine {
             case GET_VALUE_AT_LEAF:{
                 //まずはリクエストから，要求内容を取り出す．
                 //基本，DBにあるはず．
-                Optional<IpnsMapping> mapping = IPNS.validateIpnsEntry(msg);
-                if (mapping.isPresent()) {
+
+                //Optional<IpnsMapping> mapping = IPNS.validateIpnsEntry(msg);
+                if (true) {
                     try{
                         Ipns.IpnsEntry entry = Ipns.IpnsEntry.parseFrom(msg.getRecord().getValue());
                         CborObject cbor = CborObject.fromByteArray(entry.getData().toByteArray());
@@ -391,43 +404,46 @@ public class KademliaEngine {
                         //<cid, CborMap>という形式
                         Iterator<String> cIte = map.keySet().iterator();
                         LinkedList<Cborable> retList = new LinkedList<Cborable>();
-                        CborObject.CborBoolean isCborOnlyC = (CborObject.CborBoolean) map.get("cidonly");
-                        boolean isCidOnly = isCborOnlyC.value;
+                        //CborObject.CborBoolean isCborOnlyC = (CborObject.CborBoolean) map.get("cidonly");
+                       //boolean isCidOnly = isCborOnlyC.value;
 
                         //cidに対するループ
                         while(cIte.hasNext()){
                             String cid = cIte.next();
-                            CborObject.CborMap m = (CborObject.CborMap)map.get(cid);
+                            //CborObject.CborMap m = (CborObject.CborMap)map.get(cid);
+                            CborObject.CborMap  m = (CborObject.CborMap)map.get(cid);
 
                             //cidについて，ディレクトリ＋DBに双方存在すればOK．
                             //あれば，ディレクトリを参照してcbor化する．
                             //まずはピアID
-                            CborObject.CborString c_peerid = (CborObject.CborString) map.get("peerid");
+                            CborObject.CborString c_peerid = (CborObject.CborString) m.get("peerid");
                             String peerid = c_peerid.value;
 
-                            CborObject.CborString c_cid = (CborObject.CborString) map.get("cid");
+                            CborObject.CborString c_cid = (CborObject.CborString) m.get("cid");
                             //属性情報（例: time^08)
-                            CborObject.CborString c_attrmask = (CborObject.CborString) map.get("attrmask");
+                            CborObject.CborString c_attrmask = (CborObject.CborString) m.get("attrmask");
                             String attrmask = c_attrmask.value;
                             //この，問い合されたノードのピア接続先情報
-                            CborObject.CborString c_addr = (CborObject.CborString) map.get("addr");
+                            CborObject.CborString c_addr = (CborObject.CborString) m.get("addr");
                             String addr = c_addr.value;
 
+                            retList = Kad.getContentCidFromAttr(attrmask);
+
                             //まずはファイル存在チェック
-                            if(Kad.isFileExists(cid)){
+                      /*      if(Kad.java.isDAGExists(cid)){
+                                Kad.java.getContentCidFromAttr(attrmask);
                                 //次に，DBを見る．本来は見るべきだが，もうあるという前提で，返送する．
                                 //他の属性についてはすでにcByteに含まれているはず．
-                                //byte[] cByte = Kad.getDataFromMerkleDAG(cid);
+                                //byte[] cByte = Kad.java.getDataFromMerkleDAG(cid);
                                 //あとは，Mapに設定するのみ．
-                                CborObject.CborMap retMap = Kad.readMerkleDAG(cid);
+                                CborObject.CborMap retMap = Kad.java.readMerkleDAGOnly(cid);
+
                                 if(retMap == null){
 
                                 }else{
                                     retMap.put("cid", new CborObject.CborString(cid));
-                                    if(isCidOnly){
-                                        //retMapから，RawDataを削除
-                                        retMap.put("RawData", new CborObject.CborString(null));
-                                    }
+
+
 
                                     retList.add(retMap);
                                 }
@@ -436,8 +452,10 @@ public class KademliaEngine {
                             }else{
                                 continue;
                             }
-
+*/
                         }
+
+
                         CborObject.CborList retList2 = new CborObject.CborList(retList);
                         Dht.Message.Builder builder = msg.toBuilder();
 
@@ -457,7 +475,7 @@ public class KademliaEngine {
             //swarm keyの要求
             case QUERY_SWAM_KEY:{
                 //swarmkeyを取得
-               /*a String str_swarm = Kad.getIns().getSwarmKey();
+               /*a String str_swarm = Kad.java.getIns().getSwarmKey();
 
                 Dht.Message.Builder builder = msg.toBuilder();
 
@@ -470,6 +488,40 @@ public class KademliaEngine {
                 */
                 break;
             }
+            case REGISTER_MGR:{
+                try{
+                    Ipns.IpnsEntry entry = Ipns.IpnsEntry.parseFrom(msg.getRecord().getValue());
+                    CborObject cbor = CborObject.fromByteArray(entry.getData().toByteArray());
+                    //if (! (cbor instanceof CborObject.CborMap))
+                    CborObject.CborMap map = (CborObject.CborMap) cbor;
+                    Iterator<String> kIte = map.keySet().iterator();
+                    while(kIte.hasNext()){
+                        //属性名^値のループ
+                        String mask = kIte.next();
+                        CborObject.CborMap inMap = (CborObject.CborMap)map.get(mask);
+                        CborObject.CborString cbor_attrName = (CborObject.CborString) map.get("attrName");
+
+                        String maskcid = ((CborObject.CborString)inMap.get("maskcid")).value;
+                        String addr = ((CborObject.CborString)inMap.get("addr")).value;
+                        //そして登録する．
+                        Kad.getIns().getStore().putMgr(mask, maskcid, addr);
+
+
+                    }
+                    CborObject.CborBoolean ret = new CborObject.CborBoolean(true);
+
+                    Dht.Message.Builder builder = msg.toBuilder();
+                    builder = builder.setRecord(Dht.Record.newBuilder()
+                            .setKey(msg.getKey())
+                            .setValue(ByteString.copyFrom(ret.toByteArray())));
+
+                    stream.writeAndFlush(builder.build());
+                }catch(Exception e){
+                    e.printStackTrace();
+                }
+
+                break;
+            }
 
             //担当ノードに対して指定の属性情報で問い合わせが来たとき
                 //<CID, Cborble/CborMap>を返す．
@@ -477,7 +529,7 @@ public class KademliaEngine {
             case GET_VALUE_WITH_ATTRS: {
                 Optional<IpnsMapping> mapping = IPNS.validateIpnsEntry(msg);
 
-                if (mapping.isPresent()) {
+                if (mapping != null) {
                     try {
                         LinkedList<byte[]> retList = new LinkedList<byte[]>();
 
@@ -489,34 +541,71 @@ public class KademliaEngine {
                         String path_cid = new String(b_str.toByteArray());
                         String cid = path_cid.replace("/ipfs/", "");
                         CborObject cbor = CborObject.fromByteArray(entry.getData().toByteArray());
-
                         //if (! (cbor instanceof CborObject.CborMap))
                         CborObject.CborMap map = (CborObject.CborMap) cbor;
+                        //CborObject mapMapCbor = CborObject.fromByteArray(map.get("mapMap").toCbor().toByteArray());
+                       // CborObject.CborMap mapMaporg = (CborObject.CborMap)mapMapCbor;
+                        //CborObject.CborMap mapMaporg = map.get("mapMap");
+
 
                         CborObject.CborString cbor_attrName = (CborObject.CborString) map.get("attrName");
                         String attrName = cbor_attrName.value;
+                        map.remove(new CborObject.CborString("attrName"));
                         CborObject.CborString cbor_attrCurrent = (CborObject.CborString) map.get("attrCurrent");
                         String attrCurrent = cbor_attrCurrent.value;
+                        map.remove(new CborObject.CborString("attrCurrent"));
+
                         CborObject.CborString cbor_attrMax = (CborObject.CborString) map.get("attrMax");
                         String attrMax = cbor_attrMax.value;
-
+                        map.remove(new CborObject.CborString("attrMax"));
                         boolean isCidOnly = false;
 
                         CborObject.CborBoolean isCidOnlyC = (CborObject.CborBoolean) map.get("cidonly");
                         if(isCidOnlyC.value){
                             isCidOnly = true;
                         }
+                        map.remove(new CborObject.CborString("cidonly"));
+                        //そもそも当該ノードが，arrtName^attrCurrentの担当ノードなのかどうかをチェックする必要がある．
 
-                        //復号化した後の処理は関数化可能．
-                        HashMap<String, Cborable> allMap = this.processAttrTransfer(msg, stream, attrName, attrCurrent, attrMax, isCidOnly);
+                        HashMap<String, Cborable> mapMap = new HashMap<String, Cborable>();
+                        //Iterator<String> keyIte = mapMaporg.keySet().iterator();
+                        Iterator<String> keyIte = map.keySet().iterator();
+                        while(keyIte.hasNext()){
+                            String ccid = keyIte.next();
+                            mapMap.put(ccid, map.get(ccid));
+                        }
 
-                        byte[] retData = CborObject.CborMap.build(allMap).serialize();
-                        Dht.Message.Builder builder = msg.toBuilder();
-                        builder = builder.setRecord(Dht.Record.newBuilder()
-                                .setKey(msg.getKey())
-                                //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
-                                .setValue(ByteString.copyFrom(retData)));
-                        stream.writeAndFlush(builder.build());
+                        String attrMask = Kad.genAttrMask(attrName, attrCurrent);
+                        if(Kad.getIns().getStore().isInCharge(attrMask)){
+                            //復号化した後の処理は関数化可能．
+                            HashMap<String, Cborable> allMap = this.processAttrTransfer(mapMap, attrName, attrCurrent, attrMax, isCidOnly);
+                            allMap.putAll(mapMap);
+
+                            byte[] retData = CborObject.CborMap.build(allMap).serialize();
+                            Dht.Message.Builder builder = msg.toBuilder();
+                            builder = builder.setRecord(Dht.Record.newBuilder()
+                                    .setKey(msg.getKey())
+                                    //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                                    .setValue(ByteString.copyFrom(retData)));
+                            stream.writeAndFlush(builder.build());
+                        }else{
+                            //担当ノードではない場合は，他ノードへ移譲する．
+                            Host us = Kad.getIns().getNode();
+
+                            //DHTによる最短距離のノード集合を取得する．
+                            Cid attrCid = Kad.genCid(attrMask);
+                            //
+                            HashMap<String, Cborable> allMap = Kad.getIns().getKadDHT().getAttrInfoAgain(mapMap, source, attrCid, attrName, attrCurrent, attrMax, us);
+                            allMap.putAll(mapMap);
+                            byte[] retData = CborObject.CborMap.build(allMap).serialize();
+                            Dht.Message.Builder builder = msg.toBuilder();
+                            builder = builder.setRecord(Dht.Record.newBuilder()
+                                    .setKey(msg.getKey())
+                                    //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                                    .setValue(ByteString.copyFrom(retData)));
+                            stream.writeAndFlush(builder.build());
+                        }
+
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -524,6 +613,51 @@ public class KademliaEngine {
 
                     break;
                 }
+            }
+            case FIND_MGR:{
+                String mask = msg.getKey().toStringUtf8();
+                Dht.Message.Builder builder = msg.toBuilder();
+                String mgrAddr = Kad.getIns().getStore().getMgr(mask);
+                if(mgrAddr != null){
+
+                    builder = builder.setRecord(Dht.Record.newBuilder()
+                            .setKey(msg.getKey())
+                            //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                            .setValue(ByteString.copyFrom(new CborObject.CborString(mgrAddr).toByteArray())));
+                }else{
+                    builder = builder.setRecord(Dht.Record.newBuilder()
+                            .setKey(msg.getKey())
+                            //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                            .setValue(ByteString.copyFrom(new CborObject.CborString("").toByteArray())));
+                }
+                stream.writeAndFlush(builder.build());
+
+                break;
+            }
+            case INCHARGE: {
+                //maskを取得する．
+                String mask = msg.getKey().toStringUtf8();
+                Dht.Message.Builder builder = msg.toBuilder();
+                if(Kad.getIns().getStore().isInCharge(mask)){
+                    CborObject.CborBoolean ret = new CborObject.CborBoolean(true);
+
+                    //担当ノードであれば，OK
+                    builder = builder.setRecord(Dht.Record.newBuilder()
+                            .setKey(msg.getKey())
+                            //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                            .setValue(ByteString.copyFrom(ret.toByteArray())));
+                }else{
+                    CborObject.CborBoolean ret = new CborObject.CborBoolean(false);
+                    //担当ノードであれば，OK
+                    builder = builder.setRecord(Dht.Record.newBuilder()
+                            .setKey(msg.getKey())
+                            //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
+                            .setValue(ByteString.copyFrom(ret.toByteArray())));
+                }
+                stream.writeAndFlush(builder.build());
+
+
+                break;
             }
             //チャンク取得要求
             case GET_CHUNK: {
@@ -548,19 +682,9 @@ public class KademliaEngine {
                 break;
             }
             case GET_VALUE: {
-
-                //ここで例外発生
-                //Cid key = IPNS.getCidFromKey(msg.getKey());
-                //Cid key = Cid.cast(msg.getKey().toByteArray());
-                //String key = msg.getKey().toString();
-                //msg.getRecord().getKey();
-                //  Cid.decode(msg.getKey().toByteArray());
-                //Cid key = IPNS.getCidFromKey2(msg.getKey());
                 String cid = msg.getKey().toStringUtf8();
 
                 Optional<IpnsRecord> ipnsRecord = ipnsStore.get(cid);
-
-
                 Dht.Message.Builder builder = msg.toBuilder();
 
                 //Storeにcidがあれば，Cborファイルから探す．
@@ -582,44 +706,7 @@ public class KademliaEngine {
                                 .setValue(ByteString.copyFrom("Not Found".getBytes())));
                     }
 
-            /*    } else {
-                    System.out.println("****NG!!!****");
-                    builder = builder.addAllCloserPeers(getKClosestPeers(msg.getKey().toByteArray())
-                            .stream()
-                            .map(PeerAddresses::toProtobuf)
-                            .collect(Collectors.toList()));
-
-                }*/
-                /*Dht.Message outgoing = Dht.Message.newBuilder()
-                        //.setType(Dht.Message.MessageType.PUT_VALUE)
-                        .setKey(ByteString.copyFrom(cid.getBytes()))
-                        .setRecord(Dht.Record.newBuilder()
-                                .setKey(ByteString.copyFrom(cid.getBytes()))
-                                .setValue(ByteString.copyFrom(ipnsRecord.get().raw))
-                                .build())
-                        .build();
-*/
-
                 stream.writeAndFlush(builder.build());
-                //stream.writeAndFlush(ipnsRecord);
-                //stream.writeAndFlush(builder.build());
-               // stream.writeAndFlush(outgoing);
-
-/*
-                Dht.Message response = builder.build();
-                Connection con = stream.getConnection();
-
-
-                LinkedList<MultiAddress> mAddrList = new LinkedList<MultiAddress>();
-                //String rAstr = con.remoteAddress().toString();
-                mAddrList.add(new MultiAddress(con.remoteAddress().toString()));
-                Multihash remoteMultiAddr = Multihash.deserialize(source.getBytes());
-                PeerAddresses remoteAddrs = new PeerAddresses(remoteMultiAddr, mAddrList);
-
-                PeerId remotePeerId = stream.remotePeerId();
-                Host us = Kad.getIns().node;
-                GetResult res = Kad.getIns().getKadDHT().dialPeer(remoteAddrs, us).orTimeout(5, TimeUnit.SECONDS).join().deliverValue(response).join();
-*/
                 break;
             }
 
@@ -637,10 +724,13 @@ public class KademliaEngine {
                                 //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
                                 .setValue(ByteString.copyFrom(map.toByteArray())));
                     }else{
+                        SortedMap<String, Cborable> state = new TreeMap<>();
+                        map = CborObject.CborMap.build(state);
+
                         builder = builder.setRecord(Dht.Record.newBuilder()
                                 .setKey(msg.getKey())
                                 //.setValue(ByteString.copyFrom(ipnsRecord.get().raw)));
-                                .setValue(ByteString.copyFrom("Not Found".getBytes())));
+                                .setValue(ByteString.copyFrom(map.toByteArray())));
                     }
 
                     stream.writeAndFlush(builder.build());
@@ -648,7 +738,6 @@ public class KademliaEngine {
             }
             case RESPONSE: {
                 Dht.Record rcd = msg.getRecord();
-                System.out.println("***:COME!!****val: " + rcd.getValue().toStringUtf8());
                 break;
             }
             case ADD_PROVIDER: {

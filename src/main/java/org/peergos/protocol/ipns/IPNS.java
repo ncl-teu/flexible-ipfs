@@ -111,7 +111,8 @@ public class IPNS {
                                                     long validityType,
                                                     long sequence,
                                                     long ttl,
-                                                    LinkedList<Cid> cidList) {
+                                                    LinkedList<Cid> cidList,
+                                                          String ex) {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("RawData", new CborObject.CborByteArray(rawData));
         state.put("TTL", new CborObject.CborLong(ttl));
@@ -120,6 +121,7 @@ public class IPNS {
         String expiryString = formatExpiry(expiry);
         state.put("Validity", new CborObject.CborByteArray(expiryString.getBytes(StandardCharsets.UTF_8)));
         state.put("ValidityType", new CborObject.CborLong(validityType));
+        state.put("extension", new CborObject.CborString(ex));
 
         Iterator<Cid> cIte = cidList.iterator();
         LinkedList<CborObject.CborString> cidStrList = new LinkedList<CborObject.CborString>();
@@ -138,8 +140,11 @@ public class IPNS {
                                                           long validityType,
                                                           long sequence,
                                                           long ttl) {
+        CborObject.CborByteArray array = new CborObject.CborByteArray(rawData);
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("RawData", new CborObject.CborByteArray(rawData));
+
+
         /*state.put("TTL", new CborObject.CborLong(ttl));
         state.put("Value", new CborObject.CborByteArray(pathToPublish.getBytes()));
         state.put("Sequence", new CborObject.CborLong(sequence));
@@ -183,6 +188,57 @@ public class IPNS {
         String expiryString = formatExpiry(expiry);
         state.put("Validity", new CborObject.CborByteArray(expiryString.getBytes(StandardCharsets.UTF_8)));
         state.put("ValidityType", new CborObject.CborLong(validityType));
+        return CborObject.CborMap.build(state).serialize();
+    }
+
+    public static byte[] createCborDataForIpnsEntryForAttrPut(
+                                                    List<HashMap<String, String>> list,
+                                                    List<HashMap<String, String>> tagList,
+                                                    LinkedList<Cid> cidList,
+                                                    String pathToPublish,
+                                                    LocalDateTime expiry,
+                                                    long validityType,
+                                                    long sequence,
+                                                    long ttl,String ex) {
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        Iterator<HashMap<String, String>> mIte = list.iterator();
+        while(mIte.hasNext()){
+            HashMap<String, String> map = mIte.next();
+            Iterator<String> keyIte = map.keySet().iterator();
+            while(keyIte.hasNext()){
+                String key = keyIte.next();
+                String value = map.get(key);
+                state.put(key, new CborObject.CborString(value));
+            }
+        }
+        Iterator<HashMap<String, String>> tIte = tagList.iterator();
+
+        while(tIte.hasNext()){
+            HashMap<String, String> map = tIte.next();
+            Iterator<String> keyIte = map.keySet().iterator();
+            while(keyIte.hasNext()){
+                String key = keyIte.next();
+                String value = map.get(key);
+                state.put(key, new CborObject.CborString(value));
+            }
+        }
+
+        //state.put("isattrput", new CborObject.CborBoolean(true));
+        state.put("TTL", new CborObject.CborLong(ttl));
+        state.put("Value", new CborObject.CborByteArray(pathToPublish.getBytes()));
+        state.put("Sequence", new CborObject.CborLong(sequence));
+        String expiryString = formatExpiry(expiry);
+        state.put("Validity", new CborObject.CborByteArray(expiryString.getBytes(StandardCharsets.UTF_8)));
+        state.put("ValidityType", new CborObject.CborLong(validityType));
+        state.put("extension", new CborObject.CborString(ex));
+        Iterator<Cid> cIte = cidList.iterator();
+        LinkedList<CborObject.CborString> cidStrList = new LinkedList<CborObject.CborString>();
+        while(cIte.hasNext()){
+            Cid ccid = cIte.next();
+            cidStrList.add(new CborObject.CborString(ccid.toString()));
+        }
+        state.put("cidlist", new CborObject.CborList(cidStrList));
+
         return CborObject.CborMap.build(state).serialize();
     }
 
@@ -268,6 +324,88 @@ public class IPNS {
         return CborObject.CborMap.build(state).serialize();
     }
 
+    public static byte[] createCborDataForIpnsEntryForAttr(byte[] rawData,
+                                                    PeerAddresses addr,
+                                                    boolean isProviderPut,
+                                                    String pathToPublish,
+                                                    LocalDateTime expiry,
+                                                    long validityType,
+                                                    long sequence,
+                                                    long ttl,String cid) {
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("RawData", new CborObject.CborByteArray(rawData));
+        state.put("cid", new CborObject.CborString(cid));
+        // state.put("addr", new CborObject.CborByteArray(addr.toProtobuf().toByteArray()));
+        state.put("addr", new CborObject.CborString(addr.toString()));
+        state.put("isprovidercidput", new CborObject.CborBoolean(isProviderPut));
+        state.put("TTL", new CborObject.CborLong(ttl));
+        state.put("Value", new CborObject.CborByteArray(pathToPublish.getBytes()));
+        state.put("Sequence", new CborObject.CborLong(sequence));
+        String expiryString = formatExpiry(expiry);
+        state.put("Validity", new CborObject.CborByteArray(expiryString.getBytes(StandardCharsets.UTF_8)));
+        state.put("ValidityType", new CborObject.CborLong(validityType));
+
+        return CborObject.CborMap.build(state).serialize();
+
+    }
+
+
+
+    public static byte[] createCborDataForIpnsEntryForTagRequest(
+                                                          String tagcid,
+                                                          String pathToPublish,
+                                                          LocalDateTime expiry,
+                                                          long validityType,
+                                                          long sequence,
+                                                          long ttl) {
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("tagcid", new CborObject.CborString(tagcid));
+        // state.put("addr", new CborObject.CborByteArray(addr.toProtobuf().toByteArray()));
+      //  state.put("addr", new CborObject.CborString(addr.toString()));
+        state.put("TTL", new CborObject.CborLong(ttl));
+        state.put("Value", new CborObject.CborByteArray(pathToPublish.getBytes()));
+        state.put("Sequence", new CborObject.CborLong(sequence));
+        String expiryString = formatExpiry(expiry);
+        state.put("Validity", new CborObject.CborByteArray(expiryString.getBytes(StandardCharsets.UTF_8)));
+        state.put("ValidityType", new CborObject.CborLong(validityType));
+
+        return CborObject.CborMap.build(state).serialize();
+
+    }
+
+
+
+    public static byte[] createCborDataForIpnsEntryForTag(String key,
+                                                          String value,
+                                                          String tagInfo,
+                                                          String tagCid,
+                                                           PeerAddresses addr,
+                                                           String pathToPublish,
+                                                           LocalDateTime expiry,
+                                                           long validityType,
+                                                           long sequence,
+                                                           long ttl,String cid) {
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("tagname", new CborObject.CborString(key));
+        state.put("tagvalue", new CborObject.CborString(value));
+        state.put("taginfo", new CborObject.CborString(tagInfo));
+        state.put("tagcid", new CborObject.CborString(tagCid));
+        state.put("cid", new CborObject.CborString(cid));
+        // state.put("addr", new CborObject.CborByteArray(addr.toProtobuf().toByteArray()));
+        //state.put("addr", new CborObject.CborString(addr.toString()));
+        state.put("istagput", new CborObject.CborBoolean(true));
+        state.put("TTL", new CborObject.CborLong(ttl));
+        state.put("Value", new CborObject.CborByteArray(pathToPublish.getBytes()));
+        state.put("Sequence", new CborObject.CborLong(sequence));
+        String expiryString = formatExpiry(expiry);
+        state.put("Validity", new CborObject.CborByteArray(expiryString.getBytes(StandardCharsets.UTF_8)));
+        state.put("ValidityType", new CborObject.CborLong(validityType));
+
+        return CborObject.CborMap.build(state).serialize();
+
+    }
+
+
     public static byte[] createCborDataForIpnsEntry(byte[] rawData,
                                                     PeerAddresses addr,
                                                     boolean isProviderPut,
@@ -310,6 +448,80 @@ public class IPNS {
         //return CborObject.CborMap.build(state).serialize();
 
     }
+
+    public static byte[] createCborMapForAttr(boolean isCidOnly, HashMap<String, AttrBean> map) {
+
+        SortedMap<String, Cborable> state = new TreeMap<>();
+
+        Iterator<AttrBean> bIte = map.values().iterator();
+
+        while(bIte.hasNext()){
+            AttrBean bean = bIte.next();
+            SortedMap<String, Cborable> tmp = new TreeMap<>();
+            //tmp.put("peerid", new CborObject.CborString(bean.getPeerId()));
+            tmp.put("cid", new CborObject.CborString(bean.getCid()));
+            tmp.put("attrmask", new CborObject.CborString(bean.getAttrMask()));
+            tmp.put("addr", new CborObject.CborString(bean.getAddr()));
+
+
+            //byte[] reqMap = IPNS.createCborMapForAttr(bean.getPeerId(), bean.getCid(), bean.getAttrMask(), bean.getAddr());
+            state.put(bean.getCid(), CborObject.CborMap.build(tmp));
+
+        }
+        //state.put("cidonly", new CborObject.CborBoolean(isCidOnly));
+
+        //return state;
+        return CborObject.CborMap.build(state).serialize();
+
+    }
+
+
+    /**
+     * 属性＋範囲指定クエリ用のCbor生成メソッド
+     * @param pathToPublish
+     * @param expiry
+     * @param validityType
+     * @param sequence
+     * @param ttl
+     * @param attrCurrent
+     * @param attrMax
+     * @return
+     */
+    public static byte[] createCborDataForIpnsEntryForTransfer(
+            HashMap<String, Cborable> mapMap,
+            String pathToPublish,
+            LocalDateTime expiry,
+            long validityType,
+            long sequence,
+            long ttl,
+            String attrName,
+            String attrCurrent,
+            String attrMax,
+            boolean isCidOnly) {
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        //state.put("mapMap", new CborObject.CborByteArray(CborObject.CborMap.build(mapMap).serialize()));
+        Iterator<String> keyIte = mapMap.keySet().iterator();
+        while(keyIte.hasNext()){
+            String key = keyIte.next();
+            state.put(key, new CborObject.CborString(key));
+        }
+        //state.put("mapMap", new CborObject.CborByteArray(mapMap.))
+        state.put("attrName", new CborObject.CborString(attrName));
+        state.put("cidonly", new CborObject.CborBoolean(isCidOnly));
+        state.put("attrCurrent", new CborObject.CborString(attrCurrent));
+        state.put("attrMax", new CborObject.CborString(attrMax));
+        state.put("TTL", new CborObject.CborLong(ttl));
+        state.put("Value", new CborObject.CborByteArray(pathToPublish.getBytes()));
+        state.put("Sequence", new CborObject.CborLong(sequence));
+        String expiryString = formatExpiry(expiry);
+        state.put("Validity", new CborObject.CborByteArray(expiryString.getBytes(StandardCharsets.UTF_8)));
+        state.put("ValidityType", new CborObject.CborLong(validityType));
+
+
+        return CborObject.CborMap.build(state).serialize();
+
+    }
+
 
     /**
      * 属性＋範囲指定クエリ用のCbor生成メソッド

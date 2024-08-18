@@ -29,7 +29,6 @@ import org.peergos.protocol.ipns.IpnsRecord;
 import org.peergos.protocol.ipns.pb.Ipns;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -116,7 +115,12 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
         byte[] hash = new byte[32];
         new Random().nextBytes(hash);
         Multihash randomPeerId = new Multihash(Multihash.Type.sha2_256, hash);
-        findClosestPeers(randomPeerId, 20, us);
+        int num = Kad.k;
+        Multihash node1Id = Multihash.deserialize(us.getPeerId().getBytes());
+
+        findClosestPeers(randomPeerId, num, us);
+        //findClosestPeers(node1Id, num, us);
+
 
         // lookup our own peer id to keep our nearest neighbours up-to-date,
         // and connect to all of them, so they know about our addresses
@@ -161,15 +165,20 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
             if (match.isPresent())
                 return Collections.singletonList(match.get());
         }
+        //ローカルのピアたちをリストへいれる．
         closest.addAll(localClosest.stream()
                 .map(p -> new RoutingEntry(Id.create(Hash.sha256(p.peerId.toBytes()), 256), p))
                 .collect(Collectors.toList()));
+        //問い合わせ先にローカルを全ていれる．
         toQuery.addAll(closest);
         Set<Multihash> queried = new HashSet<>();
         int queryParallelism = Kad.getIns().getAlpha(0);
         while (true) {
+            //queryParallelism（上位何件か）を抽出する．
             List<RoutingEntry> queryThisRound = toQuery.stream().limit(queryParallelism).collect(Collectors.toList());
+            //問い合わせ先から抽出されたピア集合を消す．
             toQuery.removeAll(queryThisRound);
+            //抽出されたピア集合に対し，より近いピア集合を取得する．
             queryThisRound.forEach(r -> queried.add(r.addresses.peerId));
             List<CompletableFuture<List<PeerAddresses>>> futures = queryThisRound.stream()
                     .map(r -> getCloserPeers(peerIdkey, r.addresses, us))
@@ -312,16 +321,6 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
             }
         }
 
-
-
-
-/*
-        this.engine.addOutgoingConnection(pid, multiaddrs[0]);
-        this.engine.addIncomingConnection(pid, multiaddrs[0]);
-*/
-
-
-
         return dial(us, PeerId.fromBase58(target.peerId.toBase58()), multiaddrs).getController();
 
     }
@@ -374,6 +373,7 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
         return CompletableFuture.completedFuture(records.get(records.size() - 1).value);
     }
 
+
     /**
      * Addプロセス用のput処理です．他ピアにputしつつ，自身ノードには必ずファイルを書き込みます．
      *
@@ -383,11 +383,12 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
      * @param cidList
      * @return
      */
-    public List<PeerAddresses> putRawContentforAdd(LinkedList<byte[]> chunkList, Multihash cid, Host us, LinkedList<Cid> cidList){
+    public List<PeerAddresses> putRawContent(boolean isAdd, LinkedList<byte[]> chunkList, Multihash cid,
+                                             Host us, LinkedList<Cid> cidList, String ex){
         //最初の要素を取得する．
         byte[] data = chunkList.getFirst();
         //1ピアのみ取得する．
-        List<PeerAddresses> closestPeers = this.findClosestPeers(cid, Kad.getIns().getBeta(), us);
+        List<PeerAddresses> closestPeers = this.findClosestPeers(cid, Kad.getIns().getPutRedundancy(), us);
         PeerAddresses closestPeerID = closestPeers.get(0);
         LocalDateTime expiry = LocalDateTime.now().plusHours(1);
         List<PeerAddresses> retList = new LinkedList<PeerAddresses>();
@@ -403,15 +404,18 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
 
         //あとは自身のディレクトリに書き込み処理をする．
         byte[] cborEntryData = IPNS.createCborDataForIpnsEntryForAdd(cid.toBytes(), pathToPublish, expiry,
-                Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttl, cidList);
+                Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttl, cidList, ex);
         CborObject cbor = CborObject.fromByteArray(cborEntryData);
         CborObject.CborMap map = (CborObject.CborMap) cbor;
         String str_cid = cid.toString();
         //System.out.println("cid:"+str_cid);
-        //ファイル書き込み
-        Kad.writeMerkleDAGOnly(str_cid, map);
+        //Addモードの場合は，DAGファイル書き込み
+        if(isAdd){
+            Kad.writeMerkleDAGOnly(str_cid, map);
 
-        // Kad.writeData
+        }
+
+        // Kad.java.writeData
         //MerkleDAG部分のみをputするためのループ
         while (pIte.hasNext()) {
             PeerAddresses addr = pIte.next();
@@ -422,8 +426,7 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
             } else {
                 try{
                     boolean success = dialPeer(addr, us).orTimeout(5, TimeUnit.SECONDS).join().putValueForAdd(map.toByteArray(), cidList, "/ipfs/" + cid, expiry, sequence,
-                            ttl, cid, us.getPrivKey()).join();
-
+                            ttl, cid, us.getPrivKey(), ex).join();
 
                     retList.add(addr);
                 }catch(Exception e){
@@ -436,18 +439,18 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
 
         //以降は，2こめのchunkたちに対する処理．
         //chunkのputを非同期に行う．
-        if(chunkList.size() > 1){
+        if(chunkList.size() >= 1){
             //すでにput済みの最初の要素を削除する．そして，それ以降については
             //chunkのみのputとする．これを非同期で行う．
            /* chunkList.removeFirst();
             Thread t = new Thread(new ChunkPutThread(this, chunkList, us));
             t.start();*/
-           // Kad.chunkExec.submit(new ChunkPutThread(this, chunkList, us));
+           // Kad.java.chunkExec.submit(new ChunkPutThread(this, chunkList, us));
             Iterator<byte[]> cIte = chunkList.iterator();
             while(cIte.hasNext()){
                 byte[] chunk = cIte.next();
                 Cid ccid = Kad.genCid(chunk);
-                Kad.chunkExec.submit(new ChunkPutThread(this, chunk, ccid, us));
+                Kad.chunkExec.submit(new ChunkPutThread(isAdd, this, chunk, ccid, us,ex));
 
 
             }
@@ -462,7 +465,7 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
 
     public List<PeerAddresses> putRawContent(byte[] data, Multihash cid, Host us){
         //1ピアのみ取得する．
-        List<PeerAddresses> closestPeers = this.findClosestPeers(cid, Kad.getIns().getBeta(), us);
+        List<PeerAddresses> closestPeers = this.findClosestPeers(cid, Kad.getIns().getPutRedundancy(), us);
         PeerAddresses closestPeerID = closestPeers.get(0);
         LocalDateTime expiry = LocalDateTime.now().plusHours(1);
         List<PeerAddresses> retList = new LinkedList<PeerAddresses>();
@@ -486,7 +489,6 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
                 CborObject cbor = CborObject.fromByteArray(cborEntryData);
                 CborObject.CborMap map = (CborObject.CborMap) cbor;
                 String str_cid = cid.toString();
-                System.out.println("cid:"+str_cid);
                 //ファイル書き込み
                 Kad.writeMerkleDAG(str_cid, map);
                 isWritten = true;
@@ -510,12 +512,20 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
      * @param us
      * @return
      */
-    public List<PeerAddresses> putContentWithAttr(byte[] data, Multihash cid, List<HashMap<String, String>> attrList, Host us){
-        //1ピアのみ取得する．
-        List<PeerAddresses> closestPeers = this.findClosestPeers(cid, Kad.getIns().getBeta(), us);
+    public List<PeerAddresses> putContentWithAttrAndTag(boolean isAdd, byte[] data, Multihash cid,
+                                                  List<HashMap<String, String>> attrList, List<HashMap<String, String> > tagList, Host us, String ex){
+
+        byte[] allByte;
+        LinkedList<byte[]> chunkList = new LinkedList<byte[]>();
+        //Chunkごとにわける．
+        chunkList = Kad.genChunkList(data);
+        LinkedList<Cid> cidList = Kad.genCidList(chunkList);
+
+        List<PeerAddresses> closestPeers = this.findClosestPeers(cid, Kad.getIns().getPutRedundancy(), us);
         PeerAddresses closestPeerID = closestPeers.get(0);
         LocalDateTime expiry = LocalDateTime.now().plusHours(1);
         List<PeerAddresses> retList = new LinkedList<PeerAddresses>();
+        //MerkleDAGのputを同期処理として行う．
 
         int sequence = 1;
         long ttl = 1 * 3600_000_000_000L;
@@ -525,65 +535,188 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
 
         //属性情報から，属性情報のリストを生成する．
         Iterator<PeerAddresses> pIte = closestPeers.iterator();
+        if(isAdd){
+            //まずは自身にMerkleDAGを書き込む．
+            //属性付きのバイナリデータを生成する．
+            byte[] cborEntryData = IPNS.createCborDataForIpnsEntryForAttrPut( attrList, tagList, cidList, pathToPublish, expiry,
+                    Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttl,ex);
+            CborObject cbor = CborObject.fromByteArray(cborEntryData);
+            CborObject.CborMap dagMap = (CborObject.CborMap) cbor;
+            String str_cid = cid.toString();
+
+            //DAGのファイル書き込み
+            Kad.writeMerkleDAGOnly(str_cid, dagMap);
+        }
+
+        //MerkleDAG自体のputのためのループ
         while(pIte.hasNext()){
             PeerAddresses addr = pIte.next();
+            //put先が自分自身であれば，MerkleDAGを書き込む．
+            //この時点でcidリストを入れるべきである．
             if(addr.peerId.toString().equals(node1Id.toString())){
+                //  if(!isAdd){
+                //まずは自身にMerkleDAGを書き込む．
                 //属性付きのバイナリデータを生成する．
-                byte[] cborEntryData = IPNS.createCborDataForIpnsEntry(data, attrList, pathToPublish, expiry,
-                        Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttl);
+                byte[] cborEntryData = IPNS.createCborDataForIpnsEntryForAttrPut( attrList, tagList, cidList, pathToPublish, expiry,
+                        Ipns.IpnsEntry.ValidityType.EOL_VALUE, sequence, ttl,ex);
                 CborObject cbor = CborObject.fromByteArray(cborEntryData);
-                CborObject.CborMap map = (CborObject.CborMap) cbor;
+                CborObject.CborMap dagMap = (CborObject.CborMap) cbor;
                 String str_cid = cid.toString();
-                //ファイル書き込み
-                Kad.writeMerkleDAG(str_cid, map);
-            }else{
-                //コンテンツ自体は普通のPUTと同じ．
-                boolean success = dialPeer(addr, us).orTimeout(5, TimeUnit.SECONDS).join().
-                        putValueWithAttr(data,attrList,"/ipfs/" + cid, expiry, sequence,
-                        ttl, cid, us.getPrivKey()).join();
-                //各指定された属性情報に関してfindNodeをして担当ノードを探す．そして，担当ノードに対してDBに登録してもらう．
-                //addrがあるので，これを使って，当該クライアントで登録してもらう．
-                //例えばtime_0825であるばあい，time^08* を持つ担当者を探し，その担当者へDB登録依頼をしてもらう．
-                //値のフィルタを，とりあえず2とする．
-                Iterator<HashMap<String, String>> mIte = attrList.iterator();
-                while(mIte.hasNext()){
-                    HashMap<String, String> map = mIte.next();
-                    //key/valueを認識させる．
-                    Iterator<String> kIte = map.keySet().iterator();
-                    while(kIte.hasNext()){
-                        String key = kIte.next();
-                        String value = map.get(key);
-                        String mask = value.substring(0, 2);
-                        //time^08という形式にする．
-                        String maskAttr = Kad.genAttrMask(key, mask);
-                        Cid attrCid = Kad.genCid(maskAttr);
-                        //attrCidをもって，担当ノードを探す．
-                        List<PeerAddresses> mgrNodes = this.findPutTarget(attrCid, us);
-                        PeerAddresses mgrTarget = mgrNodes.get(0);
-                        //担当ノードへ，DB登録をしてもらう．
-                        if(mgrTarget.peerId.toString().equals(node1Id.toString())){
-                            //担当ノード = 自分であれば，DBに登録して終わり．
-                            //cid(time^08), time^08, prividerのaddr
-                            Kad.getIns().getStore().putAttrLink(attrCid.toString(), maskAttr, mgrTarget.peerId.toString());
-                        }else{
-                            //addrは，コンテンツのPUT先
-                            dialPeer(mgrTarget, us).orTimeout(5, TimeUnit.SECONDS).join().
-                                    putProviderAddress(maskAttr.getBytes(),true,"/ipfs/" + attrCid, expiry, sequence,
-                                            ttl, attrCid, us.getPrivKey(), addr).join();
-                        }
 
-                    }
-                }
+                //DAGのファイル書き込み
+                Kad.writeMerkleDAGOnly(str_cid, dagMap);
+                // }
+                //  continue;
+            }else{
+                //MerkleDAGのPUT処理
+                boolean success = dialPeer(addr, us).orTimeout(5, TimeUnit.SECONDS).join().
+                        putValueWithAttr(attrList,tagList, cidList,"/ipfs/" + cid, expiry, sequence,
+                                ttl, cid, us.getPrivKey(),ex).join();
 
                 retList.add(addr);
             }
 
+
         }
+
+        //各指定された属性情報に関してfindNodeをして担当ノードを探す．そして，コンテンツをputされたピアIDを，
+        // 担当ノードに対してDBに登録してもらう．(コンテンツput先がA，time^08の担当ノードがBだとすると，
+        //Bに対して，「Aにはtime^08があるよ」という情報をBへ登録する．
+        //addrがあるので，これを使って，当該クライアントで登録してもらう．
+        //例えばtime_0825であるばあい，time^08* を持つ担当者を探し，その担当者へDB登録依頼をしてもらう．
+        //値のフィルタを，とりあえず2とする．
+        Iterator<HashMap<String, String>> mIte = attrList.iterator();
+        while(mIte.hasNext()){
+            HashMap<String, String> map = mIte.next();
+            //key/valueを認識させる．
+            Iterator<String> kIte = map.keySet().iterator();
+            while(kIte.hasNext()){
+                String key = kIte.next();
+                String value = map.get(key);
+
+                //String mask = value.substring(0, 2);
+                //time^0824
+                //String mask = value;
+
+                //String maskAttr = Kad.java.genAttrMask(key, mask);
+                String maskAttr = Kad.genAttrMask(key, value);
+                String maskInfo = Kad.genAttrInfo(key, value);
+                Cid attrCid = Kad.genCid(maskAttr);
+                //attrCidをもって，担当ノードを探す．
+                List<PeerAddresses> mgrNodes = this.findInCharge(attrCid, us, maskAttr);
+                if(mgrNodes.isEmpty()){
+                    //もし担当者が見つからなければ，どうするか・・・・．
+                    //担当者を決める？？？
+                    List<PeerAddresses> newList = this.findMgrFromEndpoint(cid,us,maskAttr);
+                    if(!newList.isEmpty()){
+                        mgrNodes.add(newList.get(0));
+                    }
+                }
+                //ここを1つのみにしてよいかどうかという問題がある．
+                PeerAddresses mgrTarget = mgrNodes.get(0);
+                //担当ノードへ，DB登録をしてもらう．
+                if(mgrTarget.peerId.toString().equals(node1Id.toString())){
+                    //担当ノード = 自分であれば，DBに登録して終わり．
+                    //cid(time^08), time^08, prividerのaddr
+                    //cid(time^08), time^08, CIDを登録する．
+                    Kad.getIns().getStore().putAttrLink(attrCid.toString(), maskInfo, cid.toString());
+                }else{
+                    //addrは，属性のPUT先
+                    dialPeer(mgrTarget, us).orTimeout(5, TimeUnit.SECONDS).join().
+                            putAttrInfo(maskInfo.getBytes(),true,"/ipfs/" + attrCid, expiry, sequence,
+                                    ttl, attrCid, us.getPrivKey(), mgrTarget, cid.toString()).join();
+                }
+
+            }
+        }
+
+        //次は，TAGのput
+        Iterator<HashMap<String, String>> tIte = tagList.iterator();
+        while(tIte.hasNext()){
+            HashMap<String, String> map = tIte.next();
+            //key/valueを認識させる．
+            Iterator<String> kIte = map.keySet().iterator();
+            while(kIte.hasNext()){
+                String key = kIte.next();
+                String value = map.get(key);
+
+                //String maskAttr = Kad.java.genAttrMask(key, mask);
+                String tagInfo = Kad.genTagInfo(key, value);
+                Cid tagCid = Kad.genCid(tagInfo);
+                //完全一致用
+                this.registerTagInfo(tagCid, us, node1Id, tagInfo, key, value, cid, null);
+                //次に，部分一致検索用の処理をする．
+                String mask = Kad.genTagMask(key, value);
+                Cid tagMaskCid = Kad.genCid(mask);
+                this.registerTagInfo(tagMaskCid, us, node1Id, mask, key, value, cid, null);
+
+            }
+        }
+
+
+        //各チャンクの非同期PUTを行う．
+        if(chunkList.size() >= 1){
+            Iterator<byte[]> cIte = chunkList.iterator();
+            while(cIte.hasNext()){
+                byte[] chunk = cIte.next();
+                Cid ccid = Kad.genCid(chunk);
+                Kad.chunkExec.submit(new ChunkPutThread(isAdd, this, chunk,  ccid, us,ex));
+
+            }
+
+        }
+
         return retList;
 
     }
 
-    public List<PeerAddresses> findPutTarget(Multihash cid, Host us){
+    public void registerTagInfo(Cid tagCid, Host us, Multihash node1Id, String tagInfo, String key,
+                                String value, Multihash cid,PeerAddresses addr){
+        LocalDateTime expiry = LocalDateTime.now().plusHours(1);
+
+        int sequence = 1;
+        long ttl = 1 * 3600_000_000_000L;
+        //attrCidをもって，担当ノードを探す．
+        //List<PeerAddresses> mgrNodes = this.findInCharge(attrCid, us, maskAttr);
+        //完全一致検索用の処理
+        //CID(Tag名^Tag値)に近いノードを探す．
+        List<PeerAddresses> mgrNodes = this.findClosestPeers(tagCid, Kad.getIns().getPutRedundancy(), us);
+
+        if(mgrNodes.isEmpty()){
+
+        }
+        Iterator<PeerAddresses> mgrIte = mgrNodes.iterator();
+        while(mgrIte.hasNext()) {
+
+            PeerAddresses mgrTarget = mgrIte.next();
+            //担当ノードへ，DB登録をしてもらう．
+            if (mgrTarget.peerId.toString().equals(node1Id.toString())) {
+                //担当ノード = 自分であれば，DBに登録して終わり．
+                //cid(time^08), time^08, prividerのaddr
+                //cid(time^08), time^08, CIDを登録する．
+                //Kad.java.getIns().getStore().putAttrLink(attrCid.toString(), maskInfo, cid.toString());
+                Kad.getIns().getStore().putTagInfo(tagCid.toString(), tagInfo, key, value, cid.toString() );
+            } else {
+                //Tag情報のPUT
+                //addrは，属性のPUT先
+                dialPeer(mgrTarget, us).orTimeout(5, TimeUnit.SECONDS).join().
+                        putTagInfo(key, value, tagInfo, tagCid.toString(),  "/ipfs/" + tagCid, expiry, sequence,
+                                ttl, tagCid, us.getPrivKey(), addr, cid.toString()).join();
+
+
+            }
+        }
+    }
+
+
+    /**
+     * 担当ノード決めのメソッド
+     * @param cid
+     * @param us
+     * @param mask
+     * @return
+     */
+    public List<PeerAddresses> findPutTarget(Multihash cid, Host us, String mask){
         List<PeerAddresses> closestPeers = this.findClosestPeers(cid, 1, us);
         List<PeerAddresses> retList = new LinkedList<PeerAddresses>();
         Iterator<PeerAddresses> pIte = closestPeers.iterator();
@@ -592,10 +725,93 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
         while(pIte.hasNext()){
             PeerAddresses addrs = pIte.next();
             if(addrs.peerId.toString().equals(node1Id.toString())){
+                retList.add(addrs);
+                break;
                 //continue;
+            }else{
+                Dht.Record res = this.dialPeer(addrs, us).orTimeout(5, TimeUnit.SECONDS).join().
+                        askInCharge(mask).join();
+
+                ByteString bs = res.getValue();
+                CborObject cbor = CborObject.fromByteArray(bs.toByteArray());
+                retList.add(addrs);
+                break;
             }
-            retList.add(addrs);
+            //retList.add(addrs);
         }
+        return retList;
+    }
+
+
+    /**
+     * 担当ノードを探す．
+     * @param cid
+     * @param us
+     * @param mask
+     * @return
+     */
+    public List<PeerAddresses> findInCharge(Multihash cid, Host us, String mask){
+        List<PeerAddresses> closestPeers = this.findClosestPeers(cid, Kad.beta, us);
+        //List<PeerAddresses> closestPeers = this.engine.getKClosestPeers(cid.toBytes());
+        List<PeerAddresses> retList = new LinkedList<PeerAddresses>();
+        Iterator<PeerAddresses> pIte = closestPeers.iterator();
+        Multihash node1Id = Multihash.deserialize(us.getPeerId().getBytes());
+
+        while(pIte.hasNext()){
+            PeerAddresses addrs = pIte.next();
+            if(addrs.peerId.toString().equals(node1Id.toString())){
+                if(Kad.getIns().getStore().isInCharge(mask)){
+                    retList.add(addrs);
+                    break;
+                }
+                //continue;
+            }else{
+                Dht.Record res = this.dialPeer(addrs, us).orTimeout(5, TimeUnit.SECONDS).join().
+                        askInCharge(mask).join();
+
+                ByteString bs = res.getValue();
+                CborObject cbor = CborObject.fromByteArray(bs.toByteArray());
+                CborObject.CborBoolean ret = (CborObject.CborBoolean) cbor;
+
+                //もし担当ノードであれば，listへaddする．そしてbreakする．
+                if(ret.value){
+                    retList.add(addrs);
+                    break;
+
+                }
+            }
+            //retList.add(addrs);
+        }
+        if(retList.isEmpty()){
+            //それでも担当ノードがなければ，bootstrapへ聞きに行く．
+            List<PeerAddresses> nextList = findMgrFromEndpoint(cid, us, mask);
+            if(!nextList.isEmpty()){
+                retList.add(nextList.get(0));
+            }
+        }
+        return retList;
+    }
+
+    public List<PeerAddresses> findMgrFromEndpoint(Multihash cid, Host us, String mask){
+        //List<PeerAddresses> closestPeers = this.findClosestPeers(cid, Kad.java.beta, us);
+        //List<PeerAddresses> closestPeers = this.engine.getKClosestPeers(cid.toBytes());
+        List<PeerAddresses> retList = new LinkedList<PeerAddresses>();
+        //Iterator<PeerAddresses> pIte = closestPeers.iterator();
+        Multihash node1Id = Multihash.deserialize(us.getPeerId().getBytes());
+        PeerAddresses endpointAddr = Kad.genPeerAddresses(Kad.getIns().getEndPointPeerId());
+
+        Dht.Record res = this.dialPeer(endpointAddr, us).
+                orTimeout(5, TimeUnit.SECONDS).join().findMgr(mask).join();
+        ByteString bs = res.getValue();
+        CborObject cbor = CborObject.fromByteArray(bs.toByteArray());
+        CborObject.CborString ret = (CborObject.CborString) cbor;
+        String mgrAddr;
+        if(ret != null){
+            mgrAddr = ret.value;
+            PeerAddresses mgrAddresses = Kad.genPeerAddresses(mgrAddr);
+            retList.add(mgrAddresses);
+        }
+
         return retList;
     }
 
@@ -632,6 +848,16 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
 
     }
 
+    /**
+     *
+     * @param data byte(属性名^値)
+     * @param cid dataのcid値
+     * @param us
+     * @param addrs put先のピア
+     * @param pred
+     * @param suc
+     * @return
+     */
     public List<PeerAddresses> putAttrWithTarget(byte[] data, Multihash cid, Host us, PeerAddresses addrs, PeerAddresses pred, PeerAddresses suc){
         //1ピアのみ取得する．
         //List<PeerAddresses> closestPeers = this.findClosestPeers(cid, 1, us);
@@ -661,7 +887,7 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
             String str_cid = cid.toString();
             //ファイル書き込み
             Kad.writeMerkleDAG(str_cid, map);
-            //Kad.writeData(str_cid, map);
+            //Kad.java.writeData(str_cid, map);
 
             //DBへの反映
             Kad.getIns().getStore().putPredSuc(str_cid, new String(data), in_pred, in_suc);
@@ -672,6 +898,7 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
                     ttl, cid, us.getPrivKey(), pred, suc).join();
             retList.add(addrs);
         }
+
 
         return retList;
 
@@ -718,7 +945,8 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
 
     }
 
-    public CompletableFuture<List<CborObject.CborMap>> getValueByAttrs2(Multihash currentFilterCid,
+    public CompletableFuture<List<CborObject.CborMap>> getValueByAttrs2(HashMap<String, Cborable> mapMap,
+                                                                        Multihash currentFilterCid,
                                                                         PeerAddresses peer,
                                                                         String attrName,
                                                                         String attrCurrent,
@@ -731,7 +959,7 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
         int sequence = 1;
         //cid = cid(time^08), str_cid
         //hashに近い指定数ピアを取得する．
-        //List<PeerAddresses> closestPeers = findClosestPeers(currentFilterCid, Kad.beta, us);
+        //List<PeerAddresses> closestPeers = findClosestPeers(currentFilterCid, Kad.java.beta, us);
         List<IpnsRecord> candidates = new ArrayList<>();
         List< CborObject.CborMap> mapList = new ArrayList<CborObject.CborMap>();
         long ttl = 1 * 3600_000_000_000L;
@@ -741,11 +969,10 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
         //Multihash hash = Multihash.fromBase58("/ipfs"+publisher.toBase58());
         //このハッシュではない．
         CborObject.CborMap map = null;
-
         queriedPeers.add(peer.peerId);
         //IpnsRecordのbyote[]を取得する．
         Dht.Record res = dialPeer(peer, us).orTimeout(5, TimeUnit.SECONDS).join().
-                getValueByAttr("/ipfs/" + currentFilterCid.toString(), attrName, attrCurrent, attrMax, expiry, sequence,
+                getValueByAttrMask(mapMap, "/ipfs/" + currentFilterCid.toString(), attrName, attrCurrent, attrMax, expiry, sequence,
                         ttl, currentFilterCid, us.getPrivKey(), isCidOnly).join();
         ByteString bs = res.getValue();
         CborObject cbor = CborObject.fromByteArray(bs.toByteArray());
@@ -760,7 +987,192 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
     }
 
 
+    public /*CompletableFuture<CborObject.CborMap>*/HashMap<String, Cborable> getAttrInfoAgain(HashMap<String, Cborable> mapMap, PeerId src, Multihash attrCid,
+                                                                 String attrName,
+                                                                 String attrCurrent,
+                                                                 String attrMax,
+                                                                 Host us
+                                                                 ){
 
+
+        List<PeerAddresses> closestPeers = this.findClosestPeers(attrCid, Kad.beta, us);
+        List<PeerAddresses> retList2 = new LinkedList<PeerAddresses>();
+        Iterator<PeerAddresses> pIte = closestPeers.iterator();
+        Multihash node1Id = Multihash.deserialize(us.getPeerId().getBytes());
+        List< CborObject.CborMap> mapList = new ArrayList<CborObject.CborMap>();
+        HashMap<String, Cborable> retMap = new HashMap<String, Cborable>();
+        Set<Multihash> queriedPeers = new HashSet<>();
+
+        queriedPeers.add(node1Id);
+
+        while(pIte.hasNext()){
+            PeerAddresses addrs = pIte.next();
+            if(queriedPeers.contains(addrs.peerId)){
+                continue;
+            }
+            if(addrs.peerId.toString().equals(node1Id.toString())){
+                continue;
+            }else{
+                //Cid attrCid = Kad.java.genCid(attrMask);
+                long ttl = 1 * 3600_000_000_000L;
+                LocalDateTime expiry = LocalDateTime.now().plusHours(1);
+                int sequence = 1;
+                if(addrs.peerId.toString().indexOf(src.toString())!= -1){
+                    continue;
+                }
+                //System.out.println("addrs:" + addrs.peerId.toString() + "/ src: " + src.toString());
+
+
+                Dht.Record res  = dialPeer(addrs, us).orTimeout(15, TimeUnit.SECONDS).join().
+                        getValueByAttrMask(mapMap, "/ipfs/" + attrCid.toString(), attrName, attrCurrent, attrMax, expiry, sequence,
+                                ttl, attrCid, us.getPrivKey(), true).join();
+                ByteString bs = res.getValue();
+                CborObject cbor2 = CborObject.fromByteArray(bs.toByteArray());
+                CborObject.CborMap map =  (CborObject.CborMap) cbor2;
+                if(!map.keySet().isEmpty()){
+                    mapList.add(map);
+
+                }
+
+                Iterator<CborObject.CborMap> ite = mapList.iterator();
+                while(ite.hasNext()){
+                    CborObject.CborMap cMap = ite.next();
+                    //cMapのキー自体がcid
+                    Iterator<String> cIte = cMap.keySet().iterator();
+                    while(cIte.hasNext()){
+                        String ccid = cIte.next();
+                        //CborObject.CborMap m = (CborObject.CborMap) cMap.get(ccid);
+                        retMap.put(ccid, new CborObject.CborString(ccid));
+                    }
+                    // String cid = ((CborObject.CborString)cMap.get("cid")).value;
+                    //retMap.put(cid, cMap);
+                }
+
+                //CborObject.CborMap allMap = CborObject.CborMap.build(retMap);
+
+                // Validate and sort records by sequence number
+                //List<IpnsRecord> records = candidates.stream().sorted().collect(Collectors.toList());
+                //return CompletableFuture.completedFuture(allMap);
+                //queriedPeers.add(peer.peerId);
+            }
+            //retList.add(addrs);
+            queriedPeers.add(addrs.peerId);
+
+        }
+        return retMap;
+
+
+    }
+
+    /**
+     * EndpointへMgrリストを登録する．
+     * @param state
+     */
+    public void registerMgrAtEndPoint(SortedMap<String, Cborable> state, Host us){
+        PeerAddresses endpointAddr = Kad.genPeerAddresses(Kad.getIns().getEndPointPeerId());
+
+        LocalDateTime expiry = LocalDateTime.now().plusHours(1);
+        HashMap<String, Cborable> retMap = new HashMap<String, Cborable>();
+        int sequence = 1;
+        long ttl = 1 * 3600_000_000_000L;
+
+        this.dialPeer(endpointAddr, us).
+                orTimeout(5, TimeUnit.SECONDS).join().registerMgr(state, expiry, sequence, ttl, null,
+                        us.getPrivKey()).join();
+        //System.out.println();
+    }
+    /**
+     * 指定したタグ情報を下に，それに紐づいているCIDリストを返します．
+     * @param tagCid
+     * @param tagName
+     * @param tagValue
+     * @param us
+     * @return
+     */
+    public CompletableFuture<CborObject.CborMap> getCidByTags(Multihash tagCid,
+                                                                 String tagName,
+                                                                 String tagValue,
+                                                                 Host us
+                                                                 ){
+        LocalDateTime expiry = LocalDateTime.now().plusHours(1);
+        List<PeerAddresses> retList = new LinkedList<PeerAddresses>();
+        HashMap<String, Cborable> retMap = new HashMap<String, Cborable>();
+        int sequence = 1;
+        //cid = cid(time^08), str_cid
+        //hashに近い指定数ピアを取得する．
+        String initMask = Kad.genTagInfo(tagName, tagValue);
+
+        HashSet<String> cidSet0 = Kad.getIns().getStore().getTagInfo(tagCid.toString());
+        Iterator<String> cidIte0= cidSet0.iterator();
+        while(cidIte0.hasNext()){
+            String cid = cidIte0.next();
+            retMap.put(cid, new CborObject.CborString(cid));
+        }
+
+        //Tag名^Tag値のCIDに近いβ個のピアを取得する．
+        List<PeerAddresses> closestPeers = findClosestPeers(tagCid, Kad.beta, us);
+
+        //PeerAddresses mgr = mgrNodes.get(0);
+        //List<PeerAddresses> closestPeers = findClosestPeers(currentFilterCid, Kad.java.beta, us);
+        List<IpnsRecord> candidates = new ArrayList<>();
+        List< CborObject.CborMap> mapList = new ArrayList<CborObject.CborMap>();
+        long ttl = 1 * 3600_000_000_000L;
+
+        Set<PeerAddresses> queryCandidates = new HashSet<>();
+        Set<Multihash> queriedPeers = new HashSet<>();
+
+        for (PeerAddresses peer : closestPeers) {
+            if (queriedPeers.contains(peer.peerId))
+                continue;
+            if(us.getPeerId().toString().equals(peer.peerId.toString())){
+                //もし自分自身がTag情報を持っていれば，DBからCIDリストを取得して
+                //格納する．
+                HashSet<String> cidSet = Kad.getIns().getStore().getTagInfo(tagCid.toString());
+                Iterator<String> cidIte = cidSet.iterator();
+                while(cidIte.hasNext()){
+                    String cid = cidIte.next();
+                    retMap.put(cid, new CborObject.CborString(cid));
+                }
+
+
+            }else{
+                //IpnsRecordのbyote[]を取得する．
+                Dht.Record res = dialPeer(peer, us).orTimeout(5, TimeUnit.SECONDS).join().
+                        getCidByTags("/ipfs/" + tagCid.toString(), tagName, tagValue, expiry, sequence,
+                                ttl, tagCid,us.getPrivKey()).join();
+                ByteString bs = res.getValue();
+                CborObject cbor = CborObject.fromByteArray(bs.toByteArray());
+                CborObject.CborMap map =  (CborObject.CborMap) cbor;
+                Iterator<String> cIte = map.keySet().iterator();
+                while(cIte.hasNext()){
+                    String key = cIte.next();
+                    retMap.put(key, new CborObject.CborString(key));
+                }
+
+
+            }
+            queriedPeers.add(peer.peerId);
+        }
+
+        CborObject.CborMap allMap = CborObject.CborMap.build(retMap);
+
+        // Validate and sort records by sequence number
+        //List<IpnsRecord> records = candidates.stream().sorted().collect(Collectors.toList());
+        return CompletableFuture.completedFuture(allMap);
+
+    }
+
+
+    /**
+     *
+     * @param currentFilterCid 現在のHash(属性名^値)
+     * @param attrName  属性名
+     * @param attrCurrent 最小値
+     * @param attrMax 最大値
+     * @param us
+     * @param isCidOnly
+     * @return
+     */
     public CompletableFuture<CborObject.CborMap> getValueByAttrs(Multihash currentFilterCid,
                                                                  String attrName,
                                                                  String attrCurrent,
@@ -773,7 +1185,13 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
         int sequence = 1;
         //cid = cid(time^08), str_cid
         //hashに近い指定数ピアを取得する．
-        List<PeerAddresses> closestPeers = findClosestPeers(currentFilterCid, Kad.beta, us);
+        String initMask = Kad.genAttrMask(attrName, attrCurrent);
+        List<PeerAddresses> mgrNodes = this.findInCharge(currentFilterCid, us,initMask );
+        //PeerAddresses mgr = mgrNodes.get(0);
+
+        //現状は，一つのノードのみを取得する
+        PeerAddresses mgrTarget = mgrNodes.get(0);
+        //List<PeerAddresses> closestPeers = findClosestPeers(currentFilterCid, Kad.java.beta, us);
         List<IpnsRecord> candidates = new ArrayList<>();
         List< CborObject.CborMap> mapList = new ArrayList<CborObject.CborMap>();
         long ttl = 1 * 3600_000_000_000L;
@@ -783,45 +1201,52 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
         //Multihash hash = Multihash.fromBase58("/ipfs"+publisher.toBase58());
         //このハッシュではない．
         CborObject.CborMap map = null;
-        for (PeerAddresses peer : closestPeers) {
-            if (queriedPeers.contains(peer.peerId))
-                continue;
-            if(us.getPeerId().toString().equals(peer.peerId.toString())){
-                HashMap<String, Cborable> allMap = this.engine.processAttrTransfer(null, null,
-                        attrName, attrCurrent, attrMax, isCidOnly);
-                CborObject.CborMap cMap = CborObject.CborMap.build(allMap);
-                mapList.add(cMap);
-
-/*
-                CborObject.CborMap myMap = Kad.readMerkleDAG(icid);
-
-                //もしcidonlyフラグが立っていれば，この時点で削除する．
-                if(isCidOnly){
-                    myMap.put("RawData", new CborObject.CborString(null));
-
-                }
-                myMap.put("cid", new CborObject.CborString(icid));
-                //CborMapに，<cid,cborMap>で格納する．
-                mapMap.put(icid, myMap);
-                getSet.add(icid);
-
- */
-                continue;
-            }
-
-            queriedPeers.add(peer.peerId);
-            //IpnsRecordのbyote[]を取得する．
-            Dht.Record res = dialPeer(peer, us).orTimeout(5, TimeUnit.SECONDS).join().
-                    getValueByAttr("/ipfs/" + currentFilterCid.toString(), attrName, attrCurrent, attrMax, expiry, sequence,
-                            ttl, currentFilterCid, us.getPrivKey(), isCidOnly).join();
-            ByteString bs = res.getValue();
-            CborObject cbor = CborObject.fromByteArray(bs.toByteArray());
-            map =  (CborObject.CborMap) cbor;
+        //IpnsRecordのbyote[]を取得する．
+        Dht.Record res = dialPeer(mgrTarget, us).orTimeout(5, TimeUnit.SECONDS).join().
+                getValueByAttr("/ipfs/" + currentFilterCid.toString(), attrName, attrCurrent, attrMax, expiry, sequence,
+                        ttl, currentFilterCid, us.getPrivKey(), isCidOnly).join();
+        ByteString bs = res.getValue();
+        CborObject cbor = CborObject.fromByteArray(bs.toByteArray());
+        map =  (CborObject.CborMap) cbor;
+        if(!map.keySet().isEmpty()){
             mapList.add(map);
 
         }
 
+        //属性値のハッシュに近いピアたちのループ
+        /*for (PeerAddresses peer : closestPeers) {
+            if (queriedPeers.contains(peer.peerId))
+                continue;
+            if(us.getPeerId().toString().equals(peer.peerId.toString())){
+                HashMap<String, Cborable> allMap = this.engine.processAttrTransfer(
+                        attrName, attrCurrent, attrMax, isCidOnly);
+                if(allMap.isEmpty()){
+
+                }else{
+                    CborObject.CborMap cMap = CborObject.CborMap.build(allMap);
+                    mapList.add(cMap);
+                }
+
+            }else{
+                //IpnsRecordのbyote[]を取得する．
+                Dht.Record res = dialPeer(peer, us).orTimeout(5, TimeUnit.SECONDS).join().
+                        getValueByAttr("/ipfs/" + currentFilterCid.toString(), attrName, attrCurrent, attrMax, expiry, sequence,
+                                ttl, currentFilterCid, us.getPrivKey(), isCidOnly).join();
+                ByteString bs = res.getValue();
+                CborObject cbor = CborObject.fromByteArray(bs.toByteArray());
+                map =  (CborObject.CborMap) cbor;
+                if(!map.keySet().isEmpty()){
+                    mapList.add(map);
+
+                }
+
+            }
+            //queriedPeers.add(peer.peerId);
+
+        }*/
+
         Iterator<CborObject.CborMap> ite = mapList.iterator();
+        System.out.println("NUM:" + mapList.size());
         HashMap<String, Cborable> retMap = new HashMap<String, Cborable>();
         while(ite.hasNext()){
             CborObject.CborMap cMap = ite.next();
@@ -829,8 +1254,8 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
             Iterator<String> cIte = cMap.keySet().iterator();
             while(cIte.hasNext()){
                 String ccid = cIte.next();
-                CborObject.CborMap m = (CborObject.CborMap) cMap.get(ccid);
-                retMap.put(ccid, m);
+                //CborObject.CborMap m = (CborObject.CborMap) cMap.get(ccid);
+                retMap.put(ccid, new CborObject.CborString(ccid));
             }
            // String cid = ((CborObject.CborString)cMap.get("cid")).value;
             //retMap.put(cid, cMap);
@@ -873,10 +1298,15 @@ public class Kademlia extends StrictProtocolBinding<KademliaController> implemen
             queriedPeers.add(peer.peerId);
             //IpnsRecordのbyote[]を取得する．
             Dht.Record res = dialPeer(peer, us).orTimeout(5, TimeUnit.SECONDS).join().getMerkleDAG(str_cid).join();
+
             ByteString bs = res.getValue();
-            CborObject cbor = CborObject.fromByteArray(bs.toByteArray());
+            CborObject cbor = null;
+
+            cbor = CborObject.fromByteArray(bs.toByteArray());
             map =  (CborObject.CborMap) cbor;
             mapList.add(map);
+
+
 
         }
 

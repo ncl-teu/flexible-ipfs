@@ -12,10 +12,7 @@ import java.io.InputStream;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 public class DatabaseRecordStore implements RecordStore, AutoCloseable {
 
@@ -27,6 +24,10 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
     private final String PREDSUC_TABLE = "predsuc";
 
     private final String ATTRLINK_TABLE = "attrlink";
+
+    private final String TAG_TABLE = "tags";
+
+    private final String MGR_TABLE = "mgrs";
 
     private final String CONTENT_POPULARITY = "contentpopularity";
 
@@ -48,6 +49,9 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
             createTable();
             createPredSucTable();
             createAttrLinkTable();
+            createTagTable();
+            createMgrTable();
+
         } catch (SQLException sqle) {
             throw new IllegalStateException(sqle);
         }
@@ -73,6 +77,13 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
         }
     }
 
+    /**
+     *
+     * @param cid  CID(属性名^属性値)
+     * @param attr  属性名^属性値
+     * @param pred 先行ノードのPeerID
+     * @param suc  後続ノードのPeerID
+     */
     public void putPredSuc(String cid, String attr, String pred, String suc) {
 
         String updateSQL = "MERGE INTO " + PREDSUC_TABLE
@@ -113,12 +124,255 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
             PreparedStatement select2 = connection.prepareStatement(attrLink);
             select2.executeUpdate();
 
+            //同様に，attrlinkも削除する．
+            String tags = "delete from " + TAG_TABLE;
+            PreparedStatement select3 = connection.prepareStatement(tags);
+            select3.executeUpdate();
+
+            String mgrs = "delete from " + MGR_TABLE;
+            PreparedStatement select4 = connection.prepareStatement(tags);
+            select.executeUpdate();
+
+
+
         } catch (SQLException ex) {
             throw new IllegalStateException(ex);
         }
 
     }
 
+
+    /**
+     *
+     * @param mask
+     * @param maskcid
+     * @param addr
+     */
+    public void putMgr(String mask, String maskcid, String addr) {
+        String selectSQL = "SELECT * FROM " + MGR_TABLE
+                + " WHERE mask=?;";
+
+        try (PreparedStatement pstmt0 = connection.prepareStatement(selectSQL)) {
+            pstmt0.setString(1, mask);
+            //pstmt0.setString(2, addr);
+
+            String ret_str = null;
+            String ret_cid = null;
+            LinkedList<String> list = new LinkedList<String>();
+            //Map: (peerId, Map<CID, beans(属性mask, addr_str>)
+            try (ResultSet rs = pstmt0.executeQuery()) {
+                //リストにデータを追加する
+                while (rs.next()) {
+                    list.add(rs.getString("maskcid"));
+                }
+                if(!list.isEmpty()){
+//なければ追加する．
+                    String updateSQL = "UPDATE " + MGR_TABLE
+                            + " SET addr=? WHERE mask=?;";
+                    try (PreparedStatement pstmt = connection.prepareStatement(updateSQL)) {
+                        pstmt.setString(1, addr);
+                        pstmt.setString(2, mask);
+                       // pstmt.setString(3, addr);
+                        pstmt.executeUpdate();
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException(ex);
+                    }
+                }else{
+                    //なければ追加する．
+                    String updateSQL = "INSERT INTO " + MGR_TABLE
+                            + " (mask, maskcid, addr) VALUES (?, ?, ?);";
+                    try (PreparedStatement pstmt = connection.prepareStatement(updateSQL)) {
+                        pstmt.setString(1, mask);
+                        pstmt.setString(2, maskcid);
+                        pstmt.setString(3, addr);
+                        pstmt.executeUpdate();
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException(ex);
+                    }
+                }
+            }catch(Exception e){
+                e.printStackTrace();
+            }
+
+
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }
+
+    }
+
+
+    /**
+     *
+     * @param mask
+     * @return
+     */
+    public String getMgr(String mask){
+
+        HashSet<String> addrSet = new HashSet<String>();
+
+        String selectSQL = "SELECT * FROM " + MGR_TABLE
+                + " WHERE mask=?;";
+        String ret_addr = null;
+
+        try (PreparedStatement pstmt = connection.prepareStatement(selectSQL)) {
+            pstmt.setString(1, mask);
+            String ret_cid = null;
+            //Map: (peerId, Map<CID, beans(属性mask, addr_str>)
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    ret_addr = rs.getString("addr");
+                    //addrSet.add(ret_cid);
+                }
+            }catch(Exception e){
+                e.printStackTrace();
+            }
+
+            return ret_addr;
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    private void createMgrTable() {
+       /* String dropSQL = "drop table " + PREDSUC_TABLE;
+        try (PreparedStatement select = connection.prepareStatement(dropSQL)) {
+            select.executeUpdate();
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }*/
+        String createSQL = "create table if not exists " + MGR_TABLE
+                + "(id BIGINT auto_increment,"
+                + " mask  VARCHAR(255) not null,"
+                + " maskcid VARCHAR(255) not null, "
+                + " addr VARCHAR(65535));";
+        try (PreparedStatement select = connection.prepareStatement(createSQL)) {
+            select.execute();
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    private void createTagTable() {
+       /* String dropSQL = "drop table " + PREDSUC_TABLE;
+        try (PreparedStatement select = connection.prepareStatement(dropSQL)) {
+            select.executeUpdate();
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }*/
+        String createSQL = "create table if not exists " + TAG_TABLE
+                + "(id BIGINT auto_increment,"
+                + " tagcid  VARCHAR(255) not null,"
+                + " taginfo VARCHAR(255) not null, "
+                + " tagname VARCHAR(255),"
+                + " tagvalue VARCHAR(255),"
+                + " cid VARCHAR(255));";
+        try (PreparedStatement select = connection.prepareStatement(createSQL)) {
+            select.execute();
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+
+    /**
+     *
+     * @param tagCid
+     * @param tagInfo
+     * @param tagName
+     * @param tagValue
+     * @param cid
+     */
+    public void putTagInfo(String tagCid, String tagInfo, String tagName, String tagValue, String cid) {
+
+        String selectSQL = "SELECT * FROM " + TAG_TABLE
+                + " WHERE tagcid=? and cid=?;";
+
+        try (PreparedStatement pstmt0 = connection.prepareStatement(selectSQL)) {
+            pstmt0.setString(1, tagCid);
+            pstmt0.setString(2, cid);
+
+            String ret_str = null;
+            String ret_cid = null;
+            LinkedList<String> list = new LinkedList<String>();
+            //Map: (peerId, Map<CID, beans(属性mask, addr_str>)
+            try (ResultSet rs = pstmt0.executeQuery()) {
+                //リストにデータを追加する
+                while (rs.next()) {
+                    list.add(rs.getString("cid"));
+                }
+
+//リストがからの場合、nullを返却する
+                if(!list.isEmpty()){
+
+                /*if (rs.next()) {
+                    ret_cid = rs.getString("cid");
+                    //もしあれば何もしない*/
+                }else{
+                    //なければ追加する．
+                    String updateSQL = "INSERT INTO " + TAG_TABLE
+                            + " (tagcid, taginfo, tagname, tagvalue, cid) VALUES (?, ?, ?, ?, ?);";
+                    try (PreparedStatement pstmt = connection.prepareStatement(updateSQL)) {
+                        pstmt.setString(1, tagCid);
+                        pstmt.setString(2, tagInfo);
+                        pstmt.setString(3, tagName);
+                        pstmt.setString(4, tagValue);
+                        pstmt.setString(5, cid);
+                        pstmt.executeUpdate();
+                    } catch (SQLException ex) {
+                        throw new IllegalStateException(ex);
+                    }
+                }
+            }catch(Exception e){
+                e.printStackTrace();
+            }
+
+
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }
+
+    }
+
+
+    /**
+     * タグ値による完全一致検索
+     * @param tagcid
+     * @return
+     */
+    public HashSet<String> getTagInfo(String tagcid){
+
+        HashSet<String> cidSet = new HashSet<String>();
+
+        String selectSQL = "SELECT cid FROM " + TAG_TABLE
+                + " WHERE tagcid=?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(selectSQL)) {
+            pstmt.setString(1, tagcid);
+            String ret_str = null;
+            String ret_cid = null;
+            //Map: (peerId, Map<CID, beans(属性mask, addr_str>)
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    ret_cid = rs.getString("cid");
+                    cidSet.add(ret_cid);
+                }
+            }catch(Exception e){
+                e.printStackTrace();
+            }
+
+            return cidSet;
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
 
 
     /**
@@ -173,9 +427,9 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
     }
 
     /**
-     * @param cid
-     * @param attr
-     * @param addr
+     * @param cid  CID(属性名^属性値)
+     * @param attr  属性名^属性値
+     * @param addr コンテンツのCID
      */
     public void putAttrLink(String cid, String attr, String addr) {
 
@@ -191,6 +445,33 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
         }
     }
 
+    public boolean isInCharge(String attrMask){
+        String selectSQL = "SELECT * FROM " + PREDSUC_TABLE
+                + " WHERE attr=?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(selectSQL)) {
+            pstmt.setString(1, attrMask);
+            String ret_str = null;
+            String ret_cid = null;
+            //Map: (peerId, Map<CID, beans(属性mask, addr_str>)
+            try (ResultSet rs = pstmt.executeQuery()) {
+
+                if (rs.next()) {
+                    return true;
+                }else{
+                    return false;
+                }
+            }catch(Exception e){
+                e.printStackTrace();
+            }
+
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }finally{
+
+        }
+        return false;
+    }
     /**
      *      * 現在の属性情報から，後続担当者のpeerIDを取得する．
      * @param attrInfo 例: time^08
@@ -233,7 +514,42 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
      * @param attrInfo 例: time^08
      * @return
      */
-    public HashMap<String, HashMap<String, AttrBean>> getAttrLink(String attrInfo){
+    public LinkedList<AttrBean> getAttrLink(String attrInfo){
+
+        String selectSQL = "SELECT  cid, attr, addr FROM " + ATTRLINK_TABLE
+                + " WHERE attr LIKE ?;";
+        try (PreparedStatement pstmt = connection.prepareStatement(selectSQL)) {
+            pstmt.setString(1, attrInfo + "%");
+
+            //Map: (peerId, Map<CID, beans(属性mask, addr_str>)
+            ResultSet rs = pstmt.executeQuery();
+            //HashMap<String, HashMap<String, AttrBean>> attrMap = new HashMap<String, HashMap<String, AttrBean>>();
+            LinkedList<AttrBean> retList = new LinkedList<AttrBean>();
+
+            while(rs.next()){
+                //コンテンツのCIDを取得する．
+                String content_cid = rs.getString("addr");
+               // int idx = str_addr.indexOf(":");
+
+                String cid = rs.getString("cid");
+                AttrBean bean = new AttrBean(/*peerId, */cid, attrInfo, content_cid);
+                retList.add(bean);
+
+
+            }
+            //attrMapを用いて，指定属性値のコンテンツcborを取得する．
+            return retList;
+
+        } catch (SQLException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    /**
+     * 属性情報(time^09)から，紐づいているLEAF集合を取得する．
+     * @return
+     */
+   /* public HashMap<String, HashMap<String, AttrBean>> getAttrLinkBak(String attrInfo){
 
         //LIKE演算子が良い？
         String selectSQL = "SELECT  cid, attr, addr FROM " + ATTRLINK_TABLE
@@ -276,7 +592,7 @@ public class DatabaseRecordStore implements RecordStore, AutoCloseable {
             throw new IllegalStateException(ex);
         }
     }
-
+*/
 
 
     private String hashToKey(Multihash hash) {

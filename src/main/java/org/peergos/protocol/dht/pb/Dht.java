@@ -1124,7 +1124,15 @@ public final class Dht {
 
       GET_MERKLEDAG(11),
 
-      GET_CHUNK(12)
+      GET_CHUNK(12),
+
+      INCHARGE(13),
+
+      GET_CID_WITH_TAGS(14),
+
+      REGISTER_MGR(15),
+
+      FIND_MGR(16)
       ;
 
       /**
@@ -1184,6 +1192,10 @@ public final class Dht {
           case 10: return PUT_MERKLEDAG;
           case 11: return GET_MERKLEDAG;
           case 12: return GET_CHUNK;
+          case 13: return INCHARGE;
+          case 14: return GET_CID_WITH_TAGS;
+          case 15: return REGISTER_MGR;
+          case 16: return FIND_MGR;
           default: return null;
         }
       }
