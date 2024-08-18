@@ -1,4 +1,7 @@
 time,2
 temp,2
 geohash,4
-unixtime,8
+geohash5,5
+geohash6,6
+timestamp,8
+sensorid,2
