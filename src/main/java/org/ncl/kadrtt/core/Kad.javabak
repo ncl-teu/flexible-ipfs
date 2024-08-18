@@ -332,7 +332,8 @@ public class Kad {
             Path p2 = p1.toAbsolutePath();
 
             //String p3 = p2 + File.separator + Kad.getdataPath +
-            File dir_data = new File(Kad.ABSOLUTE_DATAPATH);
+            //File dir_data = new File(Kad.ABSOLUTE_DATAPATH);
+            File dir_data = Kad.getDirDataPath(cid);
 
             while(cidIte.hasNext()){
                 CborObject.CborString ccid = cidIte.next();
@@ -393,7 +394,8 @@ public class Kad {
                 Path p1 = Paths.get("");
                 Path p2 = p1.toAbsolutePath();
 
-                File dir_data = new File(Kad.ABSOLUTE_DATAPATH);
+                //File dir_data = new File(Kad.ABSOLUTE_DATAPATH);
+                File dir_data = Kad.getDirDataPath(contentCid);
                 String file;
                 if(ex != null){
                     file = contentCid + "." + ex;
@@ -415,7 +417,7 @@ public class Kad {
                         CborObject.CborString cstr = cIte.next();
                         String tmpCid = cstr.value;
                         //contentCid/tmpCidのファイルを取得する
-                        ObjectInputStream bis = new ObjectInputStream(new FileInputStream(Kad.ABSOLUTE_DATAPATH + File.separator + tmpCid));
+                        ObjectInputStream bis = new ObjectInputStream(new FileInputStream(dir_data + File.separator + tmpCid));
                         CborObject.CborByteArray cdata = (CborObject.CborByteArray) bis.readObject();
                         //byte[] cdata = bis.rea
                         bis.close();
@@ -467,10 +469,14 @@ public class Kad {
 
     private void configContentMap(){
         File dir = new File(Kad.ABSOLUTE_DATAPATH);
+
         File[] files = dir.listFiles();
         int len  = files.length;
         for(int i=0;i<len;i++){
-            this.registerContentInfo(files[i].getName());
+            if(files[i].isDirectory()){
+                this.registerContentInfo(files[i].getName());
+
+            }
         }
     }
 
@@ -871,6 +877,36 @@ public class Kad {
         }
 
     }
+
+    /**
+     * cidとmapをキーにして，そこから指定の場所にファイルを書き出します．
+     * @param cid
+     * @param map
+     * @return
+     */
+    public static void writeData(String orgCid, String cid, CborObject.CborMap map){
+        try{
+            //byte[] data = map.getByteArray("RawData");
+            CborObject.CborByteArray data = (CborObject.CborByteArray) map.get("RawData");
+
+            Path p1 = Paths.get("");
+            Path p2 = p1.toAbsolutePath();
+
+            File dir_data = Kad.getDirDataPath(orgCid);
+
+
+            ObjectOutputStream oosdata = new ObjectOutputStream(new FileOutputStream(dir_data+ File.separator+cid));
+            oosdata.writeObject(data);
+            oosdata.close();
+
+
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+
+    }
+
+
 
     /**
      * MerkleDAGとコンテンツを保存する処理です．

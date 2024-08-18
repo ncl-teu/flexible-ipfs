@@ -7,7 +7,7 @@ import java.io.Serializable;
 
 public class AttrBean  implements Serializable {
 
-    private String peerId;
+   // private String peerId;
 
     private String cid;
 
@@ -15,15 +15,15 @@ public class AttrBean  implements Serializable {
 
     private String addr;
 
-    public AttrBean(String pid, String cid, String attrMask, String addrMask) {
-        this.peerId = pid;
+    public AttrBean(/*String pid, */String cid, String attrMask, String addrMask) {
+        //this.peerId = pid;
         this.cid = cid;
         this.attrMask = attrMask;
         this.addr = addrMask;
     }
 
 
-
+/*
     public String getPeerId() {
         return peerId;
     }
@@ -31,7 +31,7 @@ public class AttrBean  implements Serializable {
     public void setPeerId(String peerId) {
         this.peerId = peerId;
     }
-
+*/
     public String getCid() {
         return cid;
     }

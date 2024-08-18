@@ -50,6 +50,14 @@ public class ControlMain {
         int len = hostList.size();
             //行単位(=ノード)のループ
         for(int i=0;i<len;i++){
+            //Thread.sleep(2000);
+
+            //config削除モードの場合は，一行目(=bootstrap)は読み飛ばす．
+            if(param.equals("confdel")){
+                if(i == 0){
+                    continue;
+                }
+            }
             HostInfo node = hostList.get(i);
 
             JSch jsch = new JSch();
@@ -65,42 +73,85 @@ public class ControlMain {
                 case "start":
                  //  command = "cd " + node.getPath() + "|pwd";
                    // command = "ip a&";
-                    command = node.getPath() + "/run.sh &";
+                    if(i == 1){
+                        Thread.sleep(4000);
+                    }else{
+                        Thread.sleep(100);
+
+                    }
+                    command = node.getPath() + "/run.sh > result.txt&";
                     break;
                 //ノード一斉停止
                 case "stop":
-                    command = "curl -X POST \"http://127.0.0.1:5001/api/v0/exit\"";
+                    //command = "curl -X POST \"http://127.0.0.1:5001/api/v0/exit\"";
+                    command = "killall java";
                     break;
                 case "simstart":
-                    command = node.getPath() + "/simrun.sh &";
+                    Thread.sleep(1000);
+                    command = node.getPath() + "/simrun.sh > result.txt &";
                     break;
                 case "simstop":
-                    command = "curl -X POST \"http://127.0.0.1:5001/api/v0/exit\"|killall java";
+                    //command = "curl -X POST \"http://127.0.0.1:5001/api/v0/exit\"|killall java";
+                    command = "killall java";
                     break;
                 //DBの初期化
                 case "dbinit":
                     command = "curl -X POST \"http://127.0.0.1:5001/api/v0/dht/inittable\"";
                     break;
+                case "delete":
+                    command = node.getPath() + "/delete.sh";
+                    CmdThread cmdt = new CmdThread(session, command);
+                    Thread t = new Thread(cmdt);
+                    t.start();
+                    break;
+                case "confdel":
+                    //configファイルの削除
+                    command = node.getPath() + "/confdel.sh";
+                    CmdThread cmd_conf = new CmdThread(session, command);
+                    Thread conft = new Thread(cmd_conf);
+                    conft.start();
+                    break;
                 //モジュール一斉反映
                 case "up":
+                    String path = node.getPath();
                     //lib, classes, kadrtt.properties, *.sh providers getdata
-                   ChannelSftp channel  = (ChannelSftp) session.openChannel("sftp");
+                    ChannelSftp channel  = (ChannelSftp) session.openChannel("sftp");
                     channel.connect();
                     Path p1 = Paths.get("");
                     Path p2 = p1.toAbsolutePath();
                     //コピーするファイルとディレクトリを指定する．
-                    ControlMain.putDir(session, p2 + "/classes", node.getPath() + "/classes");
-                    ControlMain.putDir(session, p2 + "/lib", node.getPath()+"/lib");
-                    channel.put(p2 + "/*.sh", node.getPath(), OVERWRITE);
-                    channel.chmod(0755, node.getPath() + "/*.sh");
-                    channel.put(p2 + "/*.properties", node.getPath(), OVERWRITE);
+                    //ControlMain.putDir(session, p2 + "/classes", node.getPath() + "/classes");
+                    ControlMain.putDir(session, p2 + File.separator +"lib", node.getPath()+"/lib");
+                    channel.put(p2 + File.separator + "*.sh", node.getPath(), OVERWRITE);
+                    channel.chmod(0755, node.getPath()  +"/*.sh");
+                    channel.put(p2 + File.separator +"*.properties", node.getPath(), OVERWRITE);
                     channel.chmod(0777, node.getPath() + "/*.properties");
-                    channel.put(p2 + "/cid.csv", node.getPath() + "/cid.csv", OVERWRITE);
+                    channel.put(p2 + File.separator +"cid.csv", node.getPath() + "/cid.csv", OVERWRITE);
+                    channel.put(p2 + File.separator +"attr", node.getPath(), OVERWRITE);
+                    channel.put(p2 + File.separator +"delete.sh", node.getPath(), OVERWRITE);
+                    channel.chmod(0777, node.getPath() + "/delete.sh");
+                    channel.put(p2 + File.separator +"confdel.sh", node.getPath(), OVERWRITE);
+                    channel.chmod(0777, node.getPath() + "/confdel.sh");
+                   /*channel.put(p2 + File.separator +"guion.sh", "/home/ncl", OVERWRITE);
+                    channel.chmod(0777, "/home/ncl" + "/guion.sh");
+                    channel.put(p2 + File.separator +"guioff.sh", "/home/ncl", OVERWRITE);
+                    channel.chmod(0777, "/home/ncl"+ "/guioff.sh");
+                    */
 
+                    break;
+                case "log":
+                    ChannelSftp channel2  = (ChannelSftp) session.openChannel("sftp");
+                    channel2.connect();
+                    Path p12 = Paths.get("");
+                    Path p22 = p12.toAbsolutePath();
+                    channel2.get(node.getPath()  + "/result.txt", p22 + File.separator + "result_" + session.getHost() + ".txt");
+                    //コピーするファイルとディレクトリを指定する．
+                    //ControlMain.putDir(session, p2 + "/classes", node.getPath() + "/classes");
+                    //ControlMain.putDir(session, p22 + File.separator +"lib", node.getPath()+"/lib");
                     break;
 
             }
-            if(!param.equals("up")){
+            if(!param.equals("up") && !param.equals("log")){
                 CmdThread cmdt = new CmdThread(session, command);
                 Thread t = new Thread(cmdt);
                 t.start();
@@ -177,14 +228,14 @@ public class ControlMain {
                     long localMTime = fileTime.to(TimeUnit.SECONDS);
                     try{
                         //channel.ls(remoteTargetDirectory + File.separator + file);
-                        channel.lstat(remoteTargetDirectory + File.separator + file);
+                        channel.lstat(remoteTargetDirectory + "/"+ file);
                     }catch(Exception e){
                         //タイムスタンプのチェックを行う．
                         channel.put(fullFileName, remoteTargetDirectory, OVERWRITE);
-                        channel.setMtime(remoteTargetDirectory + File.separator + file, (int)localMTime);
+                        channel.setMtime(remoteTargetDirectory + "/" + file, (int)localMTime);
                     }
                     //リモートファイルのmtimeを取得
-                    SftpATTRS attrs = channel.lstat(remoteTargetDirectory + File.separator + file);
+                    SftpATTRS attrs = channel.lstat(remoteTargetDirectory + "/" + file);
                     int remoteMTime = attrs.getMTime();
 
 
@@ -192,7 +243,7 @@ public class ControlMain {
                     if(localMTime > remoteMTime){
                         //タイムスタンプのチェックを行う．
                         channel.put(fullFileName, remoteTargetDirectory, OVERWRITE);
-                        channel.setMtime(remoteTargetDirectory + File.separator + file, (int)localMTime);
+                        //channel.setMtime(remoteTargetDirectory + File.separator + file, (int)localMTime);
                     }
 
                 }
