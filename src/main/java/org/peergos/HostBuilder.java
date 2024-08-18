@@ -156,8 +156,10 @@ public class HostBuilder {
 
             for (ProtocolBinding<?> protocol : protocols) {
                 b.getProtocols().add(protocol);
-                if (protocol instanceof AddressBookConsumer)
+                if (protocol instanceof AddressBookConsumer) {
                     ((AddressBookConsumer) protocol).setAddressBook(b.getAddressBook().getImpl());
+                    Kad.getIns().book = b.getAddressBook().getImpl();
+                }
             }
 
             IdentifyOuterClass.Identify.Builder identifyBuilder = IdentifyOuterClass.Identify.newBuilder()

@@ -7,6 +7,7 @@ import io.libp2p.core.*;
 import io.libp2p.core.multiformats.Multiaddr;
 import io.libp2p.core.multistream.*;
 import io.libp2p.protocol.*;
+import org.ncl.kadrtt.core.BackgroundThread;
 import org.ncl.kadrtt.core.Kad;
 import org.peergos.blockstore.*;
 import org.peergos.config.*;
@@ -135,10 +136,14 @@ public class EmbeddedIpfs {
         LOG.info("Starting bootstrap process");
         int connections = dht.bootstrapRoutingTable(node, bootstrap, addr -> !addr.contains("/wss/"));
        // int connections = dht.bootstrapRoutingTable(node, bootstrap, addr -> addr.contains("35.78.143.45"));
-        if (connections == 0)
+      //  if (connections == 0)
             //throw new IllegalStateException("No connected peers!");
         dht.bootstrap(node);
 
+
+        BackgroundThread bt = new BackgroundThread();
+        Thread t = new Thread(bt);
+     //   t.start();
 
         PeriodicBlockProvider blockProvider = new PeriodicBlockProvider(22 * 3600_000L,
                 () -> blockstore.refs().join().stream(), node, dht, blockstore.toPublish);
@@ -191,7 +196,11 @@ public class EmbeddedIpfs {
         }
         Multihash ourPeerId = Multihash.deserialize(builder.getPeerId().getBytes());
 
-        Kademlia dht = new Kademlia(new KademliaEngine(ourPeerId, providers, records), false);
+        KademliaEngine engine = new KademliaEngine(ourPeerId, providers, records);
+       //Kademlia dht = new Kademlia(new KademliaEngine(ourPeerId, providers, records), false);
+        Kademlia dht = new Kademlia(engine, false);
+        Kad.getIns().kadEngine = engine;
+
         Kad.getIns().setKadDHT(dht);
         CircuitStopProtocol.Binding stop = new CircuitStopProtocol.Binding();
         CircuitHopProtocol.RelayManager relayManager = CircuitHopProtocol.RelayManager.limitTo(builder.getPrivateKey(), ourPeerId, 5);
@@ -208,7 +217,7 @@ public class EmbeddedIpfs {
 
         Host node = builder.addProtocols(protocols).build();
 
-        //PeerId id = Kad.getIns().getNode().getPeerId();
+        //PeerId id = Kad.java.getIns().getNode().getPeerId();
 
         return new EmbeddedIpfs(node, blockstore, records, dht, bitswap, httpHandler, bootstrap);
     }

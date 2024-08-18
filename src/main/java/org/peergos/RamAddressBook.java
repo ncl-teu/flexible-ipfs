@@ -41,4 +41,12 @@ public class RamAddressBook implements AddressBook {
     public void removePeer(PeerId id){
         this.addresses.remove(id);
     }
+
+    public Map<PeerId, Set<Multiaddr>> getAddresses() {
+        return addresses;
+    }
+
+    public void setAddresses(Map<PeerId, Set<Multiaddr>> addresses) {
+        this.addresses = addresses;
+    }
 }

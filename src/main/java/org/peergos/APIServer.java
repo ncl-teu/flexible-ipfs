@@ -50,7 +50,6 @@ public class APIServer {
         //.ipfsを取得する．
         Path ipfsPath = getIPFSPath(args);
         Kad.getIns().initialize("kadrtt.properties");
-
         Logging.init(ipfsPath, args.getBoolean("logToConsole", false));
         //configを取得する．
         Config config = readConfig(ipfsPath);
@@ -87,10 +86,9 @@ public class APIServer {
         apiServer.start();
         Kad.getIns().setServer(apiServer);
 
-
         //shutdownされたときの処理
         Thread shutdownHook = new Thread(() -> {
-            LOG.info("Stopping server...");
+            LOG.info("------Stopping IPFS...------");
             try {
                 ipfs.stop().join();
                 apiServer.stop(3); //wait max 3 seconds
@@ -102,10 +100,10 @@ public class APIServer {
 
         Scanner scanner = new Scanner(System.in);
         while (true) {
-            System.out.print("Input IPFS Command:>");
+            System.out.println("-----IPFS process is READY.-----");
             String old = scanner.next();
 
-            System.out.println("input value:" + old);
+            //System.out.println("input value:" + old);
         }
     }
 
