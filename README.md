@@ -108,12 +108,20 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10"
 //timeが08~10で，かつtemp(温度)が25～35である場合で，cidのみを取得する場合
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10-temp_25_35"
 ~~~
+### IPFSに保持されている属性名一覧の取得
+~~~
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/listattrs"
+~~~
 ### 1つ以上のTagについて，Tag値によるコンテンツ検索
 ~~~
 //tag名前をareaで，値を指定して取得する場合
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?tags=area_a23fa"
 //複数属性範囲と複数タグでの取得
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10-temp_25_35&tags=area_a23fa-id_234fs"
+~~~
+### IPFSに保持されているTag名一覧の取得
+~~~
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/listtags"
 ~~~
 
 ### ノードが保持するDBのテーブルデータを空にする場合
