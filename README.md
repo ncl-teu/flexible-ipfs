@@ -51,10 +51,10 @@ curl -X POST "http://127.0.0.1:5001/api/v0/id"
 ~~~
 //Addコマンド
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxx"
-//属性付きコンテンツのAdd
+//属性付きコンテンツのAdd．書式: attrs=属性名1_属性値1-属性名2_属性値2-....
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxxx&attrs=time_0824"
-//Tag付きコンテンツのAdd (値を文字列とする場合にtagsを使う）
-curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxxx&tags=abcs"
+//Tag付きコンテンツのAdd (値を文字列とする場合にtagsを使う）．書式: tags=tag名1_tag値1-tag名2_tag値2-...
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxxx&tags=location_tokyo"
 //複数属性と複数Tag付きコンテンツのAdd (値を文字列とする場合にtagsを使う）
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/add?file=xxxx&attrs=time_20240323-temp_34&tags=area_fe43-id_345t"
 //実行結果の出力: 
@@ -84,7 +84,7 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/getvalue?cid=対象コンテン�
 - 例えば，24時間を1時間単位で検索させたい場合は，例えばtimeという属性名で1,2,3,...24という値をputします．各時間の担当ノードが決められて，それらにputされます．
 - 属性検索をする場合は，事前にこの処理が必要となります．
 ~~~
-//以下の例は，timeという属性について，08時～10時までの値を担当ノードへputしている．各値の担当ノードはKademliaによって自動的に決められます．
+//以下の例は，timeという属性について，08時～10時までの値を担当ノードへputしている．各値の担当ノードはKademliaによって自動的に決められます．書式: attrname=属性名&min=最小値&max=最大値
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/putattrs?attrname=time&min=08&max=10"
 ~~~
 ### 属性つきコンテンツのPUT
