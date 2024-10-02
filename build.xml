@@ -49,7 +49,7 @@
         <javac encoding="utf-8" destdir="${build}" source="11" target="11">
             <!--<javac encoding="utf-8" destdir="${build}">-->
             <src path="${src}" />
-
+            <classpath path="${lib}/jsch-0.1.55.jar" />
             <classpath path="${lib}/ipfslib.jar" />
             <classpath path="${lib}/jackson-core-2.15.2.jar" />
             <classpath path="${lib}/jackson-databind-2.15.2" />
