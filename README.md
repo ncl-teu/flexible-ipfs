@@ -1,5 +1,5 @@
 # flexible-ipfs
-# bootstrapノードとして実行する手順
+## bootstrapノードとして実行する手順
 - ./run.sh & またはrun.batをダブルクリック（windowsの場合)
 - .ipfs/configが生成され，自身のPeerIDとPrivate Keyが書き込まれる．
 - 一旦，CTRL+CにてIPFSを終了させる．
@@ -19,7 +19,7 @@ ipfs.endpoint=/ip4/[bootstrapのIP]/tcp/4001/ipfs/[bootstrapのPeerID]
 	],
 ~~~
 - そして再び，./run.sh & またはrun.batをダブルクリック（windowsの場合)して実行する．
-# 一般ノードとして実行する手順
+## 一般ノードとして実行する手順
 -.ipfsディレクトリに，configファイルが無いことを確認（もしあれば削除する）
 - kadrtt.propertiesのipfs.endpointを以下のようにする．
 ~~~
@@ -135,12 +135,12 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/inittable"
 ~~~
 ## 開発用ドキュメント
 - クライアントから要求を受け付けるAPIHandler.javaと，要求元からのクエリを受けるKademliaEngine.javaがあります．
-## インストール
+### インストール
 - 一式をコピーする．
 - .ipfs/configがあればconfigを削除してください．初回起動時に自動生成して，かつピアIDも自動生成してconfigに書き込まれます．
 - Merkle DAG関連のデータはpropertiesファイルにあるipfs.providerspath, コンテンツ生データはipfs.datapathで指定したディレクトリに保存されます．このディレクトリ名は，kadrtt.propertiesで指定してください．
 - kadrtt.propertiesのipfs.endpoint，つまりbootstrapノード情報を適切なものにしてください．/ip4/IPアドレス/tcp/4001/ipfs/ピアID　という形式です．ピアIDは，後述の方法で取得可能．
-## コンパイル・実行
+### コンパイル・実行
 - Javaがインストール済みである必要があります．実行するためには，できればJava Runtime17以上が望ましいです．開発するには，JDK17以上が望ましいです
 - antでコンパイルします．antが設定済み（PATH含めて）である必要があります．以下のコマンドでコンパイルしてください．
 ~~~
