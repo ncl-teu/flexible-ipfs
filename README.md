@@ -20,7 +20,7 @@ ipfs.endpoint=/ip4/[bootstrapのIP]/tcp/4001/ipfs/[bootstrapのPeerID]
 ~~~
 - そして再び，./run.sh & またはrun.batをダブルクリック（windowsの場合)して実行する．
 ## 一般ノードとして実行する手順
--.ipfsディレクトリに，configファイルが無いことを確認（もしあれば削除する）
+- .ipfsディレクトリに，configファイルが無いことを確認（もしあれば削除する）
 - kadrtt.propertiesのipfs.endpointを以下のようにする．
 ~~~
 ipfs.endpoint=/ip4/[bootstrapのIP]/tcp/4001/ipfs/[bootstrapのPeerID]
