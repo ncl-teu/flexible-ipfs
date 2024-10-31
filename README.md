@@ -1,4 +1,6 @@
 # flexible-ipfs
+## バイナリ版の取得
+- [ここからダウンロードしてください](http://ncl.gec.waseda.ac.jp/share/nabu-master.zip).
 ## bootstrapノードとして実行する手順
 - ./run.sh & またはrun.batをダブルクリック（windowsの場合)
 - .ipfs/configが生成され，自身のPeerIDとPrivate Keyが書き込まれる．
