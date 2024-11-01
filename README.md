@@ -120,6 +120,12 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?tags=area_a23fa"
 //複数属性範囲と複数タグでの取得
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?attrs=time_08_10-temp_25_35&tags=area_a23fa-id_234fs"
 ~~~
+### コンテンツが持つ全Tag情報を表示させる．
+- tagによる検索時に，showallオプションでCIDだけでなく属性すべてを表示させることができます．
+~~~
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?tags=dir_/abc/def/&showall=true"
+[{"extension":"txt","filename":"testfile","dir":"/abc/def/","cid":"xxxxxx","timestamp":"20240112"},{"extension":"mp4","filename":"testfile","dir":"/abc/def/","cid":"yyyyyyyy","timestamp":"20240113"}]
+~~~
 ### IPFSに保持されているTag名一覧の取得
 ~~~
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/listtags"
