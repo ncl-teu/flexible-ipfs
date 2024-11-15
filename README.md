@@ -130,6 +130,10 @@ curl -X POST "http://127.0.0.1:5001/api/v0/dht/getbyattrs?tags=dir_/abc/def/&sho
 ~~~
 curl -X POST "http://127.0.0.1:5001/api/v0/dht/listtags"
 ~~~
+### 隣接ノードリスト(ピアIDのリスト）の取得
+~~~
+curl -X POST "http://127.0.0.1:5001/api/v0/dht/peerlist"
+~~~
 
 ### ノードが保持するDBのテーブルデータを空にする場合
 - 各ノードは，h2 DBにてメタ情報を管理しています．これらを空にするには以下のコマンドを実行させてください．
